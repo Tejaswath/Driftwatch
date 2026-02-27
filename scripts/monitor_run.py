@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import pandas as pd
-from evidently import Report
+try:
+    # Evidently newer API
+    from evidently import Report
+except ImportError:
+    # Evidently 0.6.x API
+    from evidently.report import Report
 try:
     # Evidently <= 0.6.x
     from evidently.metric_preset import DataDriftPreset
