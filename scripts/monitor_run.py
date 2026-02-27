@@ -9,7 +9,12 @@ from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 from evidently import Report
-from evidently.metric_preset import DataDriftPreset
+try:
+    # Evidently <= 0.6.x
+    from evidently.metric_preset import DataDriftPreset
+except ImportError:
+    # Evidently >= 0.7.x
+    from evidently.presets import DataDriftPreset
 
 from common import get_supabase, log, now_iso
 
