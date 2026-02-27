@@ -1,0 +1,65 @@
+name: monitor_run
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Domain key"
+        type: string
+        required: false
+        default: "nordea"
+      baseline_version:
+        description: "Baseline version"
+        type: string
+        required: false
+        default: "v1"
+      batch_id:
+        description: "Batch identifier"
+        type: string
+        required: false
+        default: "scheduled"
+  schedule:
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: driftwatch-${{ github.event.inputs.domain || 'nordea' }}-${{ github.event.inputs.baseline_version || 'v1' }}
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      DRIFTWATCH_STORAGE_BUCKET: ${{ secrets.DRIFTWATCH_STORAGE_BUCKET || 'driftwatch-artifacts' }}
+      DRIFTWATCH_UPLOAD_HTML: "true"
+      NORDEA_ENV: ${{ secrets.NORDEA_ENV || 'sandbox' }}
+      NORDEA_SIGNATURE_BYPASS: ${{ secrets.NORDEA_SIGNATURE_BYPASS || 'true' }}
+      NORDEA_CLIENT_ID: ${{ secrets.NORDEA_CLIENT_ID }}
+      NORDEA_CLIENT_SECRET: ${{ secrets.NORDEA_CLIENT_SECRET }}
+      NORDEA_TOKEN_URL: ${{ secrets.NORDEA_TOKEN_URL }}
+      NORDEA_API_BASE_URL: ${{ secrets.NORDEA_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas requests evidently
+
+      - name: Run drift pipeline
+        run: |
+          BATCH_ID="${{ github.event.inputs.batch_id }}"
+          if [ -z "$BATCH_ID" ]; then
+            BATCH_ID="scheduled-${GITHUB_RUN_ID}"
+          fi
+          python scripts/monitor_run.py \
+            --domain "${{ github.event.inputs.domain || 'nordea' }}" \
+            --baseline-version "${{ github.event.inputs.baseline_version || 'v1' }}" \
+            --batch-id "${BATCH_ID}"

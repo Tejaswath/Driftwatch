@@ -1,0 +1,44 @@
+name: nordea_seed
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Seed profile"
+        type: choice
+        options:
+          - stable_salary_profile
+          - inflation_shift_profile
+          - subscription_spike_profile
+          - income_drop_profile
+        default: stable_salary_profile
+        required: true
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NORDEA_ENV: ${{ secrets.NORDEA_ENV || 'sandbox' }}
+      NORDEA_SIGNATURE_BYPASS: ${{ secrets.NORDEA_SIGNATURE_BYPASS || 'true' }}
+      NORDEA_CLIENT_ID: ${{ secrets.NORDEA_CLIENT_ID }}
+      NORDEA_CLIENT_SECRET: ${{ secrets.NORDEA_CLIENT_SECRET }}
+      NORDEA_TOKEN_URL: ${{ secrets.NORDEA_TOKEN_URL }}
+      NORDEA_API_BASE_URL: ${{ secrets.NORDEA_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run seed script
+        run: python scripts/nordea_seed.py --profile "${{ github.event.inputs.profile }}"
