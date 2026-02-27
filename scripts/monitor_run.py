@@ -4,6 +4,7 @@ import json
 import os
 import traceback
 import uuid
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -36,6 +37,40 @@ def load_demo_batches() -> Tuple[pd.DataFrame, pd.DataFrame]:
     baseline_df = pd.read_csv(baseline_path)
     current_df = pd.read_csv(current_path)
     return baseline_df, current_df
+
+
+def report_to_dict(report: Report) -> Dict[str, Any]:
+    # Evidently <= 0.6.x
+    if hasattr(report, "as_dict"):
+        return report.as_dict()  # type: ignore[no-any-return]
+
+    # Evidently >= 0.7.x likely pydantic model API
+    if hasattr(report, "model_dump"):
+        data = report.model_dump()  # type: ignore[no-any-return]
+        if isinstance(data, dict):
+            return data
+
+    if hasattr(report, "dict"):
+        data = report.dict()  # type: ignore[no-any-return]
+        if isinstance(data, dict):
+            return data
+
+    # JSON-string fallbacks
+    if hasattr(report, "as_json"):
+        raw = report.as_json()  # type: ignore[no-any-return]
+        if isinstance(raw, str):
+            return json.loads(raw)
+        if isinstance(raw, dict):
+            return raw
+
+    if hasattr(report, "json"):
+        raw = report.json()  # type: ignore[no-any-return]
+        if isinstance(raw, str):
+            return json.loads(raw)
+        if isinstance(raw, dict):
+            return raw
+
+    raise RuntimeError("Unable to serialize Evidently report; unsupported API surface.")
 
 
 def get_drift_result(report_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -202,8 +237,11 @@ def main() -> None:
             )
 
         report = Report(metrics=[DataDriftPreset()])
-        report.run(reference_data=baseline_df, current_data=current_df)
-        report_dict = report.as_dict()
+        with warnings.catch_warnings():
+            # Chi-square/stat-test internals can emit divide-by-zero warnings on sparse demo bins.
+            warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
+            report.run(reference_data=baseline_df, current_data=current_df)
+        report_dict = report_to_dict(report)
         drift_result = get_drift_result(report_dict)
 
         drift_status, drift_summary = summarize_drift(drift_result)
