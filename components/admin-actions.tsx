@@ -1,7 +1,15 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Database, ExternalLink, Loader2, PlayCircle, RefreshCw, RotateCcw } from "lucide-react";
+import {
+  Database,
+  ExternalLink,
+  FlaskConical,
+  Loader2,
+  PlayCircle,
+  RefreshCw,
+  RotateCcw
+} from "lucide-react";
 import { toast } from "sonner";
 import { formatRelativeTime } from "@/lib/format";
 import type { UiRun } from "@/lib/types";
@@ -15,9 +23,8 @@ type ActionResult = {
 type ActionConfig = {
   label: string;
   endpoint: string;
-  body?: Record<string, string>;
   description: string;
-  icon: "seed" | "sync" | "run" | "baseline";
+  icon: "seed" | "sync" | "run" | "baseline" | "generate";
 };
 
 type HistoryItem = {
@@ -35,29 +42,31 @@ const ACTIONS: ActionConfig[] = [
   {
     label: "Run Drift",
     endpoint: "/api/admin/run",
-    body: { domain: "nordea", baseline_version: "v1" },
     description: "Execute drift detection analysis",
     icon: "run"
   },
   {
+    label: "Generate Batch",
+    endpoint: "/api/admin/generate-batch",
+    description: "Generate scenario batch for controlled drift testing",
+    icon: "generate"
+  },
+  {
     label: "Seed Nordea",
     endpoint: "/api/admin/seed",
-    body: { profile: "stable_salary_profile" },
-    description: "Generate synthetic data for testing and development",
+    description: "Generate synthetic transaction payloads for auditable demos",
     icon: "seed"
   },
   {
     label: "Sync Nordea",
     endpoint: "/api/admin/sync",
-    body: { domain: "nordea" },
-    description: "Synchronize data from source and build feature batch",
+    description: "Build feature batch from configured source path",
     icon: "sync"
   },
   {
     label: "Refresh Baseline",
     endpoint: "/api/admin/baseline-refresh",
-    body: { domain: "nordea", schema_version: "v1" },
-    description: "Update baseline distribution from latest data",
+    description: "Retrain baseline model and update baseline distribution",
     icon: "baseline"
   }
 ];
@@ -81,6 +90,9 @@ function ActionIcon({ type }: { type: ActionConfig["icon"] }) {
   if (type === "baseline") {
     return <RotateCcw size={24} className="text-nordea-navy" />;
   }
+  if (type === "generate") {
+    return <FlaskConical size={24} className="text-nordea-navy" />;
+  }
   return <PlayCircle size={24} className="text-nordea-navy" />;
 }
 
@@ -89,6 +101,9 @@ export default function AdminActions({ initialRuns }: AdminActionsProps) {
   const [baselineVersion, setBaselineVersion] = useState("v1");
   const [batchId, setBatchId] = useState("");
   const [seedProfile, setSeedProfile] = useState("stable_salary_profile");
+  const [scenario, setScenario] = useState("stable_salary");
+  const [rows, setRows] = useState("100");
+  const [seed, setSeed] = useState("");
   const [result, setResult] = useState<ActionResult | null>(null);
   const [isLoading, setLoading] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(mapRunsToHistory(initialRuns));
@@ -99,14 +114,20 @@ export default function AdminActions({ initialRuns }: AdminActionsProps) {
     setResult(null);
 
     const body: Record<string, string> = {
-      ...(action.body ?? {})
+      domain,
+      baseline_version: baselineVersion,
+      scenario,
+      rows
     };
-    body.domain = domain;
+    if (batchId.trim()) {
+      body.batch_id = batchId.trim();
+    }
+    if (seed.trim()) {
+      body.seed = seed.trim();
+    }
+
     if (action.label === "Run Drift") {
-      body.baseline_version = baselineVersion;
-      if (batchId.trim()) {
-        body.batch_id = batchId.trim();
-      }
+      body.scenario = "latest";
     }
     if (action.label === "Seed Nordea") {
       body.profile = seedProfile;
@@ -152,7 +173,7 @@ export default function AdminActions({ initialRuns }: AdminActionsProps) {
     <section className="space-y-6">
       <div className="rounded-lg border border-[#E5E5E5] bg-white p-6">
         <h2 className="mb-4 text-lg font-bold text-nordea-navy">Configuration</h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <div>
             <label className="mb-2 block text-sm text-[#6B7280]">Domain</label>
             <input
@@ -179,7 +200,39 @@ export default function AdminActions({ initialRuns }: AdminActionsProps) {
             />
           </div>
           <div>
-            <label className="mb-2 block text-sm text-[#6B7280]">Seed Profile</label>
+            <label className="mb-2 block text-sm text-[#6B7280]">Scenario</label>
+            <select
+              value={scenario}
+              onChange={(event) => setScenario(event.target.value)}
+              className="h-10 w-full rounded-lg border border-[#E5E5E5] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-nordea-teal"
+            >
+              <option value="stable_salary">Stable salary</option>
+              <option value="inflation_shift">Inflation shift</option>
+              <option value="subscription_spike">Subscription spike</option>
+              <option value="income_drop">Income drop</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-2 block text-sm text-[#6B7280]">Rows</label>
+            <input
+              value={rows}
+              onChange={(event) => setRows(event.target.value)}
+              className="h-10 w-full rounded-lg border border-[#E5E5E5] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-nordea-teal"
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm text-[#6B7280]">Seed (Optional)</label>
+            <input
+              value={seed}
+              onChange={(event) => setSeed(event.target.value)}
+              placeholder="e.g. 42"
+              className="h-10 w-full rounded-lg border border-[#E5E5E5] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-nordea-teal"
+            />
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm text-[#6B7280]">Seed Profile (nordea_seed)</label>
             <select
               value={seedProfile}
               onChange={(event) => setSeedProfile(event.target.value)}

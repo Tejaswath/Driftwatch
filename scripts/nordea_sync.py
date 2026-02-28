@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -27,6 +28,53 @@ FEATURE_COLUMNS = [
     "cashflow_ratio_30d",
     "merchant_diversity_30d",
 ]
+
+SCENARIOS: Dict[str, Dict[str, float]] = {
+    "stable_salary": {
+        "salary": 42000,
+        "rent": -13500,
+        "grocery_mean": -4500,
+        "grocery_std": 500,
+        "subs": -999,
+        "extra_spend_mean": -1200,
+        "extra_spend_std": 400,
+        "txn_count_min": 25,
+        "txn_count_max": 45,
+    },
+    "inflation_shift": {
+        "salary": 42000,
+        "rent": -15800,
+        "grocery_mean": -5900,
+        "grocery_std": 700,
+        "subs": -1299,
+        "extra_spend_mean": -1800,
+        "extra_spend_std": 500,
+        "txn_count_min": 28,
+        "txn_count_max": 50,
+    },
+    "subscription_spike": {
+        "salary": 42000,
+        "rent": -13500,
+        "grocery_mean": -4500,
+        "grocery_std": 500,
+        "subs": -2199,
+        "extra_spend_mean": -1500,
+        "extra_spend_std": 450,
+        "txn_count_min": 30,
+        "txn_count_max": 55,
+    },
+    "income_drop": {
+        "salary": 31000,
+        "rent": -13500,
+        "grocery_mean": -4500,
+        "grocery_std": 500,
+        "subs": -999,
+        "extra_spend_mean": -800,
+        "extra_spend_std": 300,
+        "txn_count_min": 20,
+        "txn_count_max": 35,
+    },
+}
 
 SUBSCRIPTION_HINTS = {
     "spotify",
@@ -327,6 +375,95 @@ def load_live_transactions() -> Tuple[List[Dict[str, Any]], Dict[str, Any], str]
     return normalized, raw_bundle, account_id
 
 
+def generate_synthetic_transactions(scenario: str, seed: Optional[int], days: int = 60) -> List[Dict[str, Any]]:
+    if scenario not in SCENARIOS:
+        raise RuntimeError(f"Unknown scenario '{scenario}'. Valid: {sorted(SCENARIOS)}")
+
+    config = SCENARIOS[scenario]
+    rng = np.random.default_rng(seed)
+
+    merchants_grocery = ["ICA", "Coop", "Willys", "Lidl"]
+    merchants_extra = ["Apoteket", "Systembolaget", "Elgiganten", "H&M", "Stadium", "Clas Ohlson"]
+    merchants_subs = ["Spotify", "Netflix", "HBO", "Adobe", "YouTube"]
+
+    start_day = datetime.now(timezone.utc).date() - timedelta(days=max(days, 45) - 1)
+    transactions: List[Dict[str, Any]] = []
+
+    for day_offset in range(max(days, 45)):
+        tx_day = start_day + timedelta(days=day_offset)
+
+        if tx_day.day == 25:
+            salary = max(1000.0, float(config["salary"]) * (1.0 + float(rng.normal(0, 0.02))))
+            transactions.append(
+                {
+                    "ts": datetime(tx_day.year, tx_day.month, tx_day.day, 8, 0, tzinfo=timezone.utc),
+                    "date": tx_day,
+                    "amount": round(salary, 2),
+                    "merchant": "Employer AB",
+                    "raw": {"source": "synthetic", "scenario": scenario},
+                }
+            )
+
+        if tx_day.day == 1:
+            rent = -abs(float(config["rent"]) * (1.0 + float(rng.normal(0, 0.01))))
+            transactions.append(
+                {
+                    "ts": datetime(tx_day.year, tx_day.month, tx_day.day, 9, 0, tzinfo=timezone.utc),
+                    "date": tx_day,
+                    "amount": round(rent, 2),
+                    "merchant": "Rent",
+                    "raw": {"source": "synthetic", "scenario": scenario},
+                }
+            )
+
+        if tx_day.day == 5:
+            total_subs = abs(float(config["subs"]))
+            weights = rng.random(len(merchants_subs))
+            weights = weights / weights.sum()
+            for merchant, weight in zip(merchants_subs, weights):
+                amount = -(total_subs * float(weight))
+                transactions.append(
+                    {
+                        "ts": datetime(tx_day.year, tx_day.month, tx_day.day, 11, int(rng.integers(0, 60)), tzinfo=timezone.utc),
+                        "date": tx_day,
+                        "amount": round(amount, 2),
+                        "merchant": merchant,
+                        "raw": {"source": "synthetic", "scenario": scenario},
+                    }
+                )
+
+        if float(rng.random()) < 0.85:
+            grocery_total = max(5.0, abs(float(rng.normal(abs(config["grocery_mean"]) / 30.0, abs(config["grocery_std"]) / 30.0))))
+            split_count = int(rng.integers(1, 3))
+            for _ in range(split_count):
+                amount = -(grocery_total / split_count)
+                transactions.append(
+                    {
+                        "ts": datetime(tx_day.year, tx_day.month, tx_day.day, int(rng.integers(16, 21)), int(rng.integers(0, 60)), tzinfo=timezone.utc),
+                        "date": tx_day,
+                        "amount": round(amount, 2),
+                        "merchant": str(rng.choice(merchants_grocery)),
+                        "raw": {"source": "synthetic", "scenario": scenario},
+                    }
+                )
+
+        avg_daily_extra = float(rng.uniform(config["txn_count_min"], config["txn_count_max"])) / 30.0
+        extra_count = int(rng.poisson(max(0.05, avg_daily_extra)))
+        for _ in range(extra_count):
+            extra_amount = -abs(float(rng.normal(abs(config["extra_spend_mean"]), abs(config["extra_spend_std"])) ))
+            transactions.append(
+                {
+                    "ts": datetime(tx_day.year, tx_day.month, tx_day.day, int(rng.integers(10, 22)), int(rng.integers(0, 60)), tzinfo=timezone.utc),
+                    "date": tx_day,
+                    "amount": round(extra_amount, 2),
+                    "merchant": str(rng.choice(merchants_extra)),
+                    "raw": {"source": "synthetic", "scenario": scenario},
+                }
+            )
+
+    return transactions
+
+
 def safe_entropy(counts: Iterable[float]) -> float:
     values = [v for v in counts if v > 0]
     total = sum(values)
@@ -392,7 +529,7 @@ def compute_features_for_anchor(transactions: List[Dict[str, Any]], anchor_day: 
     return features
 
 
-def build_feature_batch(transactions: List[Dict[str, Any]], rows: int = 10) -> pd.DataFrame:
+def build_feature_batch(transactions: List[Dict[str, Any]], rows: int = 100) -> pd.DataFrame:
     latest_day = max(tx["date"] for tx in transactions)
     anchors = [latest_day - timedelta(days=offset) for offset in range(rows - 1, -1, -1)]
     feature_rows = [compute_features_for_anchor(transactions, anchor_day) for anchor_day in anchors]
@@ -401,26 +538,13 @@ def build_feature_batch(transactions: List[Dict[str, Any]], rows: int = 10) -> p
     return frame
 
 
-def align_to_template_dtypes(df: pd.DataFrame, template_path: Path) -> pd.DataFrame:
-    template = pd.read_csv(template_path)
-    result = df.copy()
-    for column in template.columns:
-        if column not in result.columns:
-            result[column] = 0
-        target_dtype = template[column].dtype
-        try:
-            if str(target_dtype).startswith("int"):
-                result[column] = pd.to_numeric(result[column], errors="coerce").fillna(0).round().astype(target_dtype)
-            else:
-                result[column] = pd.to_numeric(result[column], errors="coerce").fillna(0).astype(target_dtype)
-        except Exception:  # noqa: BLE001
-            result[column] = pd.to_numeric(result[column], errors="coerce").fillna(0)
-    ordered = result[template.columns]
-    return ordered
-
-
 def load_mock_features() -> pd.DataFrame:
     return pd.read_csv(Path("data/demo/current.csv"))
+
+
+def build_batch_from_synthetic(scenario: str, rows: int, seed: Optional[int]) -> pd.DataFrame:
+    tx = generate_synthetic_transactions(scenario=scenario, seed=seed, days=max(rows + 45, 90))
+    return build_feature_batch(tx, rows=rows)
 
 
 def main() -> None:
@@ -428,6 +552,9 @@ def main() -> None:
     parser.add_argument("--domain", default="nordea")
     parser.add_argument("--baseline-version", default="v1")
     parser.add_argument("--batch-id", default=f"manual-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}")
+    parser.add_argument("--scenario", default="stable_salary", choices=sorted(SCENARIOS.keys()))
+    parser.add_argument("--rows", type=int, default=100)
+    parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
 
     supabase = get_supabase()
@@ -437,17 +564,19 @@ def main() -> None:
     domain = domains[0]
 
     live_read_enabled = env_bool("NORDEA_LIVE_READ", default=False)
-    source_mode = "mock"
-    source_reason = "NORDEA_LIVE_READ disabled."
+    source_mode = "synthetic"
+    source_reason = "Synthetic scenario mode"
     live_account_id = ""
     raw_storage_uri = ""
+    scenario_used = args.scenario
 
     current_df: pd.DataFrame
     if live_read_enabled:
         try:
             transactions, raw_bundle, live_account_id = load_live_transactions()
-            current_df = build_feature_batch(transactions, rows=10)
+            current_df = build_feature_batch(transactions, rows=args.rows)
             source_mode = "live"
+            scenario_used = "live_transactions"
             source_reason = f"Loaded {len(transactions)} transactions from Nordea sandbox."
             raw_storage_uri = supabase.upload_bytes(
                 "driftwatch-artifacts",
@@ -458,17 +587,30 @@ def main() -> None:
             log(f"nordea_sync source_mode=live account_id={live_account_id} tx_count={len(transactions)}")
         except Exception as exc:  # noqa: BLE001
             source_mode = "mock_fallback"
-            source_reason = f"Live read failed; fallback to demo data. reason={exc}"
+            source_reason = f"Live read failed; fallback to synthetic. reason={exc}"
             log(f"nordea_sync source_mode=mock_fallback reason={exc}")
-            current_df = load_mock_features()
+            current_df = build_batch_from_synthetic(args.scenario, rows=args.rows, seed=args.seed)
     else:
-        current_df = load_mock_features()
-        log("nordea_sync source_mode=mock reason=NORDEA_LIVE_READ disabled")
+        source_reason = "NORDEA_LIVE_READ disabled"
+        log("nordea_sync source_mode=synthetic reason=NORDEA_LIVE_READ disabled")
+        current_df = build_batch_from_synthetic(args.scenario, rows=args.rows, seed=args.seed)
 
-    current_df = align_to_template_dtypes(current_df, Path("data/demo/current.csv"))
+    if current_df.empty:
+        current_df = load_mock_features()
+        source_mode = "mock_fallback"
+        source_reason = "Generated empty synthetic dataset; fallback to demo current.csv"
+
     schema_hash = compute_schema_hash(current_df)
 
     storage_uri = supabase.upload_bytes(
+        "driftwatch-artifacts",
+        f"feature-batches/{args.domain}/{args.batch_id}.csv",
+        current_df.to_csv(index=False).encode("utf-8"),
+        "text/csv",
+    )
+
+    # Legacy compatibility path for existing readers.
+    supabase.upload_bytes(
         "driftwatch-artifacts",
         f"feature-batches/{args.domain}/current.csv",
         current_df.to_csv(index=False).encode("utf-8"),
@@ -476,22 +618,19 @@ def main() -> None:
     )
 
     supabase.upsert(
-        "baselines",
+        "feature_batches",
         [
             {
                 "domain_id": domain["id"],
-                "baseline_version": args.baseline_version,
-                "schema_version": "v1",
-                "schema_hash": schema_hash,
+                "batch_id": args.batch_id,
+                "scenario": scenario_used,
                 "row_count": len(current_df),
                 "storage_uri": storage_uri,
-                "reason": (
-                    f"sync mode={source_mode}; {source_reason}; "
-                    f"raw_uri={raw_storage_uri or 'none'}; account_id={live_account_id or 'n/a'}"
-                ),
+                "schema_hash": schema_hash,
+                "source_mode": source_mode,
             }
         ],
-        on_conflict="domain_id,baseline_version",
+        on_conflict="domain_id,batch_id",
     )
 
     supabase.update(
@@ -500,7 +639,12 @@ def main() -> None:
         data={"last_worker_heartbeat": now_iso()},
     )
 
-    log(f"sync completed for domain={args.domain}")
+    log(
+        "sync completed "
+        f"domain={args.domain} batch_id={args.batch_id} scenario={scenario_used} "
+        f"mode={source_mode} rows={len(current_df)} reason={source_reason} "
+        f"raw_uri={raw_storage_uri or 'none'} account_id={live_account_id or 'n/a'}"
+    )
 
 
 if __name__ == "__main__":

@@ -108,6 +108,7 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Run ID</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Domain</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Scenario</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Drift</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Baseline</th>
@@ -118,7 +119,7 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
             <tbody>
               {!currentRuns.length ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-[#6B7280]">
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-[#6B7280]">
                     No runs recorded for the selected filters.
                   </td>
                 </tr>
@@ -131,6 +132,11 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-sm text-nordea-navy">{run.domain}</td>
+                    <td className="px-4 py-3 text-sm text-[#6B7280]">
+                      <span className="inline-flex rounded-full bg-[#EEF2FF] px-2.5 py-1 text-xs font-medium text-[#1D2AB7]">
+                        {run.scenario ?? "unknown"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={run.status} />
                     </td>

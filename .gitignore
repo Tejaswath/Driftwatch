@@ -7,5 +7,11 @@ out
 *.pyc
 __pycache__
 instruction.md
+PROJECT_DEEP_DIVE_LOCAL.md
 figma_export_v1/
 DriftWatch Frontend Design.zip
+CLAUDE_ANALYSIS.md
+
+.venv/
+.venv_py312_check/
+.pytest_cache/

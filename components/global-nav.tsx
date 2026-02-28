@@ -25,7 +25,8 @@ export default function GlobalNav({ latestRun }: GlobalNavProps) {
     return null;
   }
 
-  const sourceMode = latestRun?.sourceMode ?? "Mock";
+  const sourceMode = latestRun?.sourceMode ?? "Synthetic";
+  const scenarioLabel = latestRun?.scenario ?? "n/a";
   const isHealthy = Boolean(latestRun && (latestRun.status === "completed" || latestRun.status === "processing"));
 
   return (
@@ -38,10 +39,10 @@ export default function GlobalNav({ latestRun }: GlobalNavProps) {
 
           <div className="hidden items-center gap-4 md:flex">
             <div className="rounded-full border border-white px-3 py-1">
-              <span className="text-xs font-medium text-white">Sandbox</span>
+              <span className="text-xs font-medium text-white">Scenario: {scenarioLabel}</span>
             </div>
 
-            <div className={`rounded-full px-3 py-1 ${sourceMode === "Live" ? "bg-nordea-teal" : "bg-[#9CA3AF]"}`}>
+            <div className={`rounded-full px-3 py-1 ${sourceMode === "Live" ? "bg-nordea-teal" : "bg-[#4A67FF]"}`}>
               <span className="text-xs font-medium text-white">{sourceMode}</span>
             </div>
 
@@ -113,9 +114,9 @@ export default function GlobalNav({ latestRun }: GlobalNavProps) {
 
             <div className="flex flex-wrap gap-2 border-t border-[#E5E5E5] pt-4">
               <div className="rounded-full border border-nordea-navy px-3 py-1">
-                <span className="text-xs font-medium text-nordea-navy">Sandbox</span>
+                <span className="text-xs font-medium text-nordea-navy">Scenario: {scenarioLabel}</span>
               </div>
-              <div className={`rounded-full px-3 py-1 ${sourceMode === "Live" ? "bg-nordea-teal" : "bg-[#9CA3AF]"}`}>
+              <div className={`rounded-full px-3 py-1 ${sourceMode === "Live" ? "bg-nordea-teal" : "bg-[#4A67FF]"}`}>
                 <span className="text-xs font-medium text-white">{sourceMode}</span>
               </div>
               <div className="flex items-center gap-2 rounded-full border border-[#D1D5DB] px-3 py-1">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PlayCircle } from "lucide-react";
 import CopyRunIdButton from "@/components/copy-run-id-button";
 import DriftTrendChart from "@/components/drift-trend-chart";
+import LandingHero from "@/components/landing-hero";
 import { DriftBadge, StatusBadge, YesNoBadge } from "@/components/status-badge";
 import { formatRelativeTime, formatScore } from "@/lib/format";
 import { getRuns } from "@/lib/supabase";
@@ -38,6 +39,8 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-white">
       <div className="space-y-6">
+        <LandingHero hasRuns={runs.length > 0} />
+
         <div className="rounded-lg border border-[#E5E5E5] bg-white p-6">
           <div className="grid gap-6 md:grid-cols-5">
             <div className="space-y-2 md:col-span-3">
@@ -73,7 +76,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-[#E5E5E5] bg-white p-4">
             <div className="mb-2 text-xs uppercase text-[#6B7280]">Runs 24h</div>
             <div className="text-[32px] font-bold text-nordea-navy">{recentRuns.length}</div>
@@ -90,8 +93,8 @@ export default async function DashboardPage() {
           </div>
           <div className="rounded-lg border border-[#E5E5E5] bg-white p-4">
             <div className="mb-2 text-xs uppercase text-[#6B7280]">Source Mode</div>
-            <div className="mt-2 inline-flex items-center rounded-full bg-[#9CA3AF] px-3 py-1.5 text-xs font-medium text-white">
-              {latestRun?.sourceMode ?? "Mock"}
+            <div className="mt-2 inline-flex items-center rounded-full bg-[#4A67FF] px-3 py-1.5 text-xs font-medium text-white">
+              {latestRun?.sourceMode ?? "Synthetic"}
             </div>
           </div>
         </div>

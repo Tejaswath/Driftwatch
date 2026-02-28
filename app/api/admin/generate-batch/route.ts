@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { dispatchAdminWorkflow } from "@/lib/admin-dispatch";
 
-type SyncBody = {
+type GenerateBatchBody = {
   domain?: string;
   scenario?: string;
   rows?: string;
@@ -10,7 +10,7 @@ type SyncBody = {
 };
 
 export async function POST(request: NextRequest) {
-  const body = ((await request.json().catch(() => ({}))) ?? {}) as SyncBody;
+  const body = ((await request.json().catch(() => ({}))) ?? {}) as GenerateBatchBody;
 
   const payload: Record<string, string> = {
     domain: body.domain ?? "nordea",
@@ -24,7 +24,5 @@ export async function POST(request: NextRequest) {
     payload.seed = body.seed;
   }
 
-  return dispatchAdminWorkflow(request, "nordea_sync.yml", {
-    ...payload
-  });
+  return dispatchAdminWorkflow(request, "generate_batch.yml", payload);
 }

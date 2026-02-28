@@ -6,7 +6,10 @@ type DriftPayload = {
     top_features?: unknown;
     deterministic_summary?: unknown;
   };
-  source_mode?: unknown;
+  source?: {
+    source_mode?: unknown;
+    scenario?: unknown;
+  };
 };
 
 function parseTopFeatures(value: unknown): DriftTopFeature[] {
@@ -32,16 +35,17 @@ function parseTopFeatures(value: unknown): DriftTopFeature[] {
 }
 
 function inferSourceMode(payload: DriftPayload, run: MonitorRun): UiSourceMode {
-  const sourceMode = payload.source_mode;
+  const sourceMode = payload.source?.source_mode;
   if (typeof sourceMode === "string") {
-    return sourceMode.toLowerCase() === "live" ? "Live" : "Mock";
+    const normalized = sourceMode.toLowerCase();
+    return normalized === "live" ? "Live" : "Synthetic";
   }
 
   const reason = run.error_text?.toLowerCase() ?? "";
-  if (reason.includes("fallback") || reason.includes("mock")) {
-    return "Mock";
+  if (reason.includes("live")) {
+    return "Live";
   }
-  return "Mock";
+  return "Synthetic";
 }
 
 function parseDriftPayload(run: MonitorRun): DriftPayload {
@@ -67,9 +71,15 @@ export function toUiRun(run: MonitorRun): UiRun {
     finishedAt: run.finished_at,
     baselineVersion: run.baseline_version,
     batchId: run.batch_id,
+    featureBatchId: run.feature_batch_id,
+    scenario:
+      typeof payload.source?.scenario === "string"
+        ? payload.source.scenario
+        : run.scenario,
     errorText: run.error_text,
     reportJson: run.report_json,
     htmlReportUri: run.html_report_uri,
+    predictionDriftScore: run.prediction_drift_score,
     sourceMode: inferSourceMode(payload, run),
     driftRatio,
     topFeatures

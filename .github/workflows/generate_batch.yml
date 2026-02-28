@@ -1,4 +1,4 @@
-name: nordea_sync
+name: generate_batch
 
 on:
   workflow_dispatch:
@@ -8,11 +8,6 @@ on:
         type: string
         required: false
         default: "nordea"
-      batch_id:
-        description: "Batch identifier"
-        type: string
-        required: false
-        default: "sync"
       scenario:
         description: "Synthetic scenario"
         type: choice
@@ -28,6 +23,11 @@ on:
         type: string
         required: false
         default: "100"
+      batch_id:
+        description: "Batch identifier (optional)"
+        type: string
+        required: false
+        default: ""
       seed:
         description: "Random seed (optional)"
         type: string
@@ -35,21 +35,13 @@ on:
         default: ""
 
 jobs:
-  sync:
+  generate:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      NORDEA_ENV: ${{ secrets.NORDEA_ENV || 'sandbox' }}
-      NORDEA_SIGNATURE_BYPASS: ${{ secrets.NORDEA_SIGNATURE_BYPASS || 'true' }}
-      NORDEA_CLIENT_ID: ${{ secrets.NORDEA_CLIENT_ID }}
-      NORDEA_CLIENT_SECRET: ${{ secrets.NORDEA_CLIENT_SECRET }}
-      NORDEA_TOKEN_URL: ${{ secrets.NORDEA_TOKEN_URL }}
-      NORDEA_API_BASE_URL: ${{ secrets.NORDEA_API_BASE_URL }}
-      NORDEA_ACCESS_TOKEN: ${{ secrets.NORDEA_ACCESS_TOKEN }}
-      NORDEA_LIVE_READ: ${{ secrets.NORDEA_LIVE_READ || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,19 +54,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install "pandas<3" numpy requests
 
-      - name: Run sync script
+      - name: Generate feature batch
         run: |
-          BATCH_ID="${{ github.event.inputs.batch_id }}"
-          SEED="${{ github.event.inputs.seed }}"
-          if [ -z "$BATCH_ID" ] || [ "$BATCH_ID" = "sync" ]; then
-            BATCH_ID="sync-${GITHUB_RUN_ID}"
-          fi
-          CMD=(python scripts/nordea_sync.py \
+          CMD=(python scripts/generate_batch.py \
             --domain "${{ github.event.inputs.domain || 'nordea' }}" \
-            --batch-id "${BATCH_ID}" \
             --scenario "${{ github.event.inputs.scenario || 'stable_salary' }}" \
             --rows "${{ github.event.inputs.rows || '100' }}")
-          if [ -n "$SEED" ]; then
-            CMD+=(--seed "$SEED")
+          if [ -n "${{ github.event.inputs.batch_id }}" ]; then
+            CMD+=(--batch-id "${{ github.event.inputs.batch_id }}")
+          fi
+          if [ -n "${{ github.event.inputs.seed }}" ]; then
+            CMD+=(--seed "${{ github.event.inputs.seed }}")
           fi
           "${CMD[@]}"

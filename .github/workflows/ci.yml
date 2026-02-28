@@ -23,3 +23,24 @@ jobs:
 
       - name: Env exposure guard
         run: npm run check:public-env
+
+      - name: Lint
+        run: npm run lint
+
+      - name: JS tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pandas<3" numpy requests scikit-learn joblib pytest "evidently==0.6.7"
+
+      - name: Python tests
+        run: pytest tests/ -v

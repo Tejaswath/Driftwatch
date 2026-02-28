@@ -13,6 +13,11 @@ on:
         type: string
         required: false
         default: "v1"
+      scenario:
+        description: "Scenario hint (latest uses newest feature batch)"
+        type: string
+        required: false
+        default: "latest"
       batch_id:
         description: "Batch identifier"
         type: string
@@ -51,7 +56,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "pandas<3" requests "evidently==0.6.7"
+          pip install "pandas<3" numpy requests "evidently==0.6.7" scikit-learn joblib
 
       - name: Run drift pipeline
         run: |

@@ -4,6 +4,24 @@
 
 :root {
   color-scheme: light;
+  --dw-bg: #ffffff;
+  --dw-bg-muted: #f9fafb;
+  --dw-text: #111827;
+  --dw-text-muted: #6b7280;
+  --dw-border: #e5e7eb;
+  --dw-nav: #0000a0;
+  --dw-accent: #00a39b;
+}
+
+.dark {
+  color-scheme: dark;
+  --dw-bg: #0b1020;
+  --dw-bg-muted: #11162a;
+  --dw-text: #e5e7eb;
+  --dw-text-muted: #94a3b8;
+  --dw-border: #1f2937;
+  --dw-nav: #1d2ab7;
+  --dw-accent: #00a39b;
 }
 
 * {
@@ -13,8 +31,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #ffffff;
-  color: #111827;
+  background: var(--dw-bg);
+  color: var(--dw-text);
   font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 

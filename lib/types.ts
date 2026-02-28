@@ -7,8 +7,11 @@ export type MonitorRun = {
   domain_key: string;
   baseline_version: string;
   batch_id: string;
+  feature_batch_id: string | null;
+  scenario: string | null;
   status: RunStatus;
   drift_status: DriftStatus | null;
+  prediction_drift_score: number | null;
   report_json: Record<string, unknown> | null;
   html_report_uri: string | null;
   error_text: string | null;
@@ -33,8 +36,14 @@ export type FeatureDriftMetric = {
 
 export type ActionTicket = {
   id: string;
+  run_id: string;
   ticket_type: TicketType;
   status: string;
+  payload: Record<string, unknown> | null;
+  title: string | null;
+  description: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
   created_at: string;
 };
 
@@ -45,7 +54,7 @@ export type DriftTopFeature = {
   drifted: boolean;
 };
 
-export type UiSourceMode = "Live" | "Mock";
+export type UiSourceMode = "Live" | "Synthetic";
 
 export type UiRun = {
   id: string;
@@ -57,9 +66,12 @@ export type UiRun = {
   finishedAt: string | null;
   baselineVersion: string;
   batchId: string;
+  featureBatchId: string | null;
+  scenario: string | null;
   errorText: string | null;
   reportJson: Record<string, unknown> | null;
   htmlReportUri: string | null;
+  predictionDriftScore: number | null;
   sourceMode: UiSourceMode;
   driftRatio: number;
   topFeatures: DriftTopFeature[];

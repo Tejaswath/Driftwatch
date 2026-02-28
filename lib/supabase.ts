@@ -31,14 +31,14 @@ async function supabaseGet<T>(path: string): Promise<T> {
 
 export async function getRuns(limit = 30): Promise<MonitorRun[]> {
   return supabaseGet<MonitorRun[]>(
-    `monitor_runs?select=id,domain_key,baseline_version,batch_id,status,drift_status,report_json,html_report_uri,error_text,started_at,finished_at,created_at&order=created_at.desc&limit=${limit}`
+    `monitor_runs?select=id,domain_key,baseline_version,batch_id,feature_batch_id,scenario,status,drift_status,prediction_drift_score,report_json,html_report_uri,error_text,started_at,finished_at,created_at&order=created_at.desc&limit=${limit}`
   );
 }
 
 export async function getRunById(id: string): Promise<MonitorRun | null> {
   const escapedId = encodeURIComponent(id);
   const rows = await supabaseGet<MonitorRun[]>(
-    `monitor_runs?select=id,domain_key,baseline_version,batch_id,status,drift_status,report_json,html_report_uri,error_text,started_at,finished_at,created_at&id=eq.${escapedId}&limit=1`
+    `monitor_runs?select=id,domain_key,baseline_version,batch_id,feature_batch_id,scenario,status,drift_status,prediction_drift_score,report_json,html_report_uri,error_text,started_at,finished_at,created_at&id=eq.${escapedId}&limit=1`
   );
   return rows[0] ?? null;
 }
@@ -59,6 +59,14 @@ export async function getDomainHeartbeats(): Promise<DomainHeartbeat[]> {
 export async function getActionTicketsByRunId(runId: string): Promise<ActionTicket[]> {
   const escapedId = encodeURIComponent(runId);
   return supabaseGet<ActionTicket[]>(
-    `action_tickets?select=id,ticket_type,status,created_at&run_id=eq.${escapedId}&order=created_at.desc`
+    `action_tickets?select=id,run_id,ticket_type,status,payload,title,description,resolved_at,resolved_by,created_at&run_id=eq.${escapedId}&order=created_at.desc`
   );
+}
+
+export async function getTicketById(ticketId: string): Promise<ActionTicket | null> {
+  const escapedId = encodeURIComponent(ticketId);
+  const rows = await supabaseGet<ActionTicket[]>(
+    `action_tickets?select=id,run_id,ticket_type,status,payload,title,description,resolved_at,resolved_by,created_at&id=eq.${escapedId}&limit=1`
+  );
+  return rows[0] ?? null;
 }

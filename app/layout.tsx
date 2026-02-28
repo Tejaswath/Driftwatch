@@ -6,8 +6,12 @@ import { getRuns } from "@/lib/supabase";
 import { toUiRun } from "@/lib/ui-mappers";
 
 export const metadata: Metadata = {
-  title: "DriftWatch",
-  description: "Nordea-first drift monitoring MVP"
+  title: "DriftWatch | Synthetic-First Model Drift Monitoring",
+  description:
+    "Monitor feature drift and prediction drift using a zero-cost, synthetic-first MLOps pipeline.",
+  icons: {
+    icon: "/favicon.ico"
+  }
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

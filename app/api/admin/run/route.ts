@@ -5,6 +5,7 @@ type RunBody = {
   domain?: string;
   baseline_version?: string;
   batch_id?: string;
+  scenario?: string;
 };
 
 export async function POST(request: NextRequest) {
@@ -12,10 +13,12 @@ export async function POST(request: NextRequest) {
   const domain = body.domain ?? "nordea";
   const baselineVersion = body.baseline_version ?? "v1";
   const batchId = body.batch_id ?? `manual-${Date.now()}`;
+  const scenario = body.scenario ?? "latest";
 
   return dispatchAdminWorkflow(request, "monitor_run.yml", {
     domain,
     baseline_version: baselineVersion,
-    batch_id: batchId
+    batch_id: batchId,
+    scenario
   });
 }

@@ -8,9 +8,16 @@ function buildRun(overrides: Partial<MonitorRun> = {}): MonitorRun {
     domain_key: "nordea",
     baseline_version: "v1",
     batch_id: "batch-1",
+    feature_batch_id: "fb-1",
+    scenario: "stable_salary",
     status: "completed",
     drift_status: "red",
+    prediction_drift_score: 0.2,
     report_json: {
+      source: {
+        source_mode: "synthetic",
+        scenario: "stable_salary"
+      },
       drift: {
         drift_ratio: 0.9,
         top_features: [
@@ -38,7 +45,7 @@ describe("toUiRun", () => {
     expect(mapped.driftRatio).toBe(0.9);
     expect(mapped.topFeatures).toHaveLength(1);
     expect(mapped.topFeatures[0]?.feature).toBe("daily_spend_30d");
-    expect(mapped.sourceMode).toBe("Mock");
+    expect(mapped.sourceMode).toBe("Synthetic");
   });
 
   it("falls back safely when report payload is missing", () => {

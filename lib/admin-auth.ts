@@ -43,7 +43,15 @@ function decodeSession(token: string): number | null {
 }
 
 export function checkAdminPassword(input: string): boolean {
-  return input.length > 0 && input === serverConfig.adminPassword;
+  if (!input || !serverConfig.adminPassword) {
+    return false;
+  }
+  const inputBuffer = Buffer.from(input);
+  const expectedBuffer = Buffer.from(serverConfig.adminPassword);
+  if (inputBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(inputBuffer, expectedBuffer);
 }
 
 export function createAdminSessionToken(): { token: string; maxAge: number } {

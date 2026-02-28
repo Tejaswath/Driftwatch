@@ -7,9 +7,13 @@ import traceback
 import uuid
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
+import joblib
+import numpy as np
 import pandas as pd
+
 try:
     # Evidently newer API
     from evidently import Report
@@ -24,6 +28,10 @@ except ImportError:
     from evidently.presets import DataDriftPreset
 
 from common import get_supabase, log, now_iso
+from nordea_sync import FEATURE_COLUMNS
+
+
+STATUS_RANK = {"green": 0, "yellow": 1, "red": 2}
 
 
 def to_json_number(value: Any) -> Any:
@@ -41,9 +49,26 @@ def storage_bucket() -> str:
     return os.getenv("DRIFTWATCH_STORAGE_BUCKET", "driftwatch-artifacts")
 
 
+def storage_path_from_uri(uri: str, bucket: str) -> Optional[str]:
+    if not uri:
+        return None
+    parsed = urlparse(uri)
+    marker = f"/storage/v1/object/public/{bucket}/"
+    if marker in parsed.path:
+        return parsed.path.split(marker, 1)[1]
+    return None
+
+
 def load_csv_from_storage(supabase, bucket: str, path: str) -> pd.DataFrame:
     raw = supabase.download_public_bytes(bucket, path)
     return pd.read_csv(io.BytesIO(raw))
+
+
+def load_bytes_from_storage_uri(supabase, bucket: str, uri: str) -> bytes:
+    path = storage_path_from_uri(uri, bucket)
+    if not path:
+        raise RuntimeError(f"Unsupported storage URI format: {uri}")
+    return supabase.download_public_bytes(bucket, path)
 
 
 def load_baseline_dataframe(
@@ -51,49 +76,110 @@ def load_baseline_dataframe(
 ) -> Tuple[Dict[str, Any], pd.DataFrame, str]:
     bucket = storage_bucket()
     baseline_path = f"baselines/{domain_key}/{baseline_version}.csv"
-    baseline_uri = supabase.public_object_url(bucket, baseline_path)
+    baseline_uri_default = supabase.public_object_url(bucket, baseline_path)
+
+    rows = supabase.select(
+        "baselines",
+        select=(
+            "id,domain_id,baseline_version,schema_version,schema_hash,row_count,storage_uri,reason,"
+            "model_uri,baseline_predictions_json"
+        ),
+        filters={"domain_id": f"eq.{domain_id}", "baseline_version": f"eq.{baseline_version}"},
+        limit=1,
+    )
+    baseline_row = rows[0] if rows else None
 
     baseline_source = "storage"
-    try:
-        baseline_df = load_csv_from_storage(supabase, bucket, baseline_path)
-    except Exception as exc:  # noqa: BLE001
-        baseline_df = pd.read_csv(Path("data/demo/baseline.csv"))
-        supabase.upload_bytes(
-            bucket,
-            baseline_path,
-            baseline_df.to_csv(index=False).encode("utf-8"),
-            "text/csv",
-        )
-        baseline_source = f"demo_fallback ({exc})"
+    baseline_df: Optional[pd.DataFrame] = None
+
+    if baseline_row and baseline_row.get("storage_uri"):
+        try:
+            baseline_df = pd.read_csv(io.BytesIO(load_bytes_from_storage_uri(supabase, bucket, baseline_row["storage_uri"])))
+            baseline_source = "baseline.storage_uri"
+        except Exception as exc:  # noqa: BLE001
+            baseline_source = f"baseline.storage_uri_fallback ({exc})"
+
+    if baseline_df is None:
+        try:
+            baseline_df = load_csv_from_storage(supabase, bucket, baseline_path)
+            baseline_source = "default_baseline_path"
+        except Exception as exc:  # noqa: BLE001
+            baseline_df = pd.read_csv(Path("data/demo/baseline.csv"))
+            supabase.upload_bytes(
+                bucket,
+                baseline_path,
+                baseline_df.to_csv(index=False).encode("utf-8"),
+                "text/csv",
+            )
+            baseline_source = f"demo_fallback ({exc})"
 
     schema_hash = compute_schema_hash(baseline_df)
+    upsert_payload: Dict[str, Any] = {
+        "domain_id": domain_id,
+        "baseline_version": baseline_version,
+        "schema_version": "v1",
+        "schema_hash": schema_hash,
+        "row_count": len(baseline_df),
+        "storage_uri": baseline_row.get("storage_uri") if baseline_row and baseline_row.get("storage_uri") else baseline_uri_default,
+        "reason": f"monitor reference source={baseline_source}",
+    }
+    if baseline_row and baseline_row.get("model_uri"):
+        upsert_payload["model_uri"] = baseline_row["model_uri"]
+    if baseline_row and baseline_row.get("baseline_predictions_json"):
+        upsert_payload["baseline_predictions_json"] = baseline_row["baseline_predictions_json"]
+
     upserted = supabase.upsert(
         "baselines",
-        [
-            {
-                "domain_id": domain_id,
-                "baseline_version": baseline_version,
-                "schema_version": "v1",
-                "schema_hash": schema_hash,
-                "row_count": len(baseline_df),
-                "storage_uri": baseline_uri,
-                "reason": f"monitor reference source={baseline_source}",
-            }
-        ],
+        [upsert_payload],
         on_conflict="domain_id,baseline_version",
     )
     return upserted[0], baseline_df, baseline_source
 
 
-def load_current_dataframe(supabase, domain_key: str) -> Tuple[pd.DataFrame, str]:
+def load_current_dataframe(
+    supabase,
+    domain_id: str,
+    domain_key: str,
+    batch_id: str,
+) -> Tuple[pd.DataFrame, str, Optional[Dict[str, Any]]]:
     bucket = storage_bucket()
-    current_path = f"feature-batches/{domain_key}/current.csv"
+
+    filters = {"domain_id": f"eq.{domain_id}"}
+    if batch_id:
+        filters["batch_id"] = f"eq.{batch_id}"
+
+    batch_rows = supabase.select(
+        "feature_batches",
+        select="id,batch_id,scenario,row_count,storage_uri,schema_hash,source_mode,created_at",
+        filters=filters,
+        order="created_at.desc",
+        limit=1,
+    )
+
+    if not batch_rows and batch_id:
+        batch_rows = supabase.select(
+            "feature_batches",
+            select="id,batch_id,scenario,row_count,storage_uri,schema_hash,source_mode,created_at",
+            filters={"domain_id": f"eq.{domain_id}"},
+            order="created_at.desc",
+            limit=1,
+        )
+
+    if batch_rows:
+        batch = batch_rows[0]
+        try:
+            current_df = pd.read_csv(io.BytesIO(load_bytes_from_storage_uri(supabase, bucket, batch["storage_uri"])))
+            return current_df, f"feature_batches:{batch['batch_id']}", batch
+        except Exception as exc:  # noqa: BLE001
+            log(f"feature batch load fallback for batch_id={batch.get('batch_id')} reason={exc}")
+
+    legacy_path = f"feature-batches/{domain_key}/current.csv"
     try:
-        current_df = load_csv_from_storage(supabase, bucket, current_path)
-        return current_df, "synced_feature_batch"
+        legacy_df = load_csv_from_storage(supabase, bucket, legacy_path)
+        return legacy_df, "legacy_current_csv", None
     except Exception as exc:  # noqa: BLE001
         current_df = pd.read_csv(Path("data/demo/current.csv"))
-        return current_df, f"demo_fallback ({exc})"
+        return current_df, f"demo_fallback ({exc})", None
 
 
 def align_to_reference_schema(current_df: pd.DataFrame, reference_df: pd.DataFrame) -> pd.DataFrame:
@@ -128,24 +214,10 @@ def report_to_dict(report: Report) -> Dict[str, Any]:
     if hasattr(report, "as_dict"):
         return report.as_dict()  # type: ignore[no-any-return]
 
-    # Evidently >= 0.7.x likely pydantic model API
-    if hasattr(report, "model_dump"):
-        data = report.model_dump()  # type: ignore[no-any-return]
-        if isinstance(data, dict):
-            return data
-
     if hasattr(report, "dict"):
         data = report.dict()  # type: ignore[no-any-return]
         if isinstance(data, dict):
             return data
-
-    # JSON-string fallbacks
-    if hasattr(report, "as_json"):
-        raw = report.as_json()  # type: ignore[no-any-return]
-        if isinstance(raw, str):
-            return json.loads(raw)
-        if isinstance(raw, dict):
-            return raw
 
     if hasattr(report, "json"):
         raw = report.json()  # type: ignore[no-any-return]
@@ -166,7 +238,7 @@ def get_drift_result(report_dict: Dict[str, Any]) -> Dict[str, Any]:
     return {}
 
 
-def summarize_drift(drift_result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+def summarize_feature_drift(drift_result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     drift_by_columns = drift_result.get("drift_by_columns", {})
     total_columns = max(len(drift_by_columns), 1)
     drifted_count = sum(1 for details in drift_by_columns.values() if details.get("drift_detected"))
@@ -198,33 +270,105 @@ def summarize_drift(drift_result: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         "total_columns": total_columns,
         "drift_ratio": round(drift_ratio, 4),
         "top_features": top,
-        "deterministic_summary": (
-            f"{drifted_count} of {total_columns} monitored features drifted. "
-            f"Recommended action: {'investigate immediately' if status == 'red' else 'continue monitoring'}"
-        ),
     }
     return status, summary
+
+
+def compute_psi(expected: np.ndarray, current: np.ndarray, epsilon: float = 1e-6) -> float:
+    expected_safe = np.clip(expected, epsilon, None)
+    current_safe = np.clip(current, epsilon, None)
+    expected_safe = expected_safe / expected_safe.sum()
+    current_safe = current_safe / current_safe.sum()
+    values = (current_safe - expected_safe) * np.log(current_safe / expected_safe)
+    return float(np.sum(values))
+
+
+def prediction_status_from_psi(psi: float) -> str:
+    if psi >= 0.25:
+        return "red"
+    if psi >= 0.1:
+        return "yellow"
+    return "green"
+
+
+def compute_prediction_drift(
+    supabase,
+    baseline: Dict[str, Any],
+    current_df: pd.DataFrame,
+) -> Optional[Dict[str, Any]]:
+    model_uri = baseline.get("model_uri")
+    baseline_pred = baseline.get("baseline_predictions_json")
+    if not model_uri or not isinstance(baseline_pred, dict):
+        return None
+
+    distribution = baseline_pred.get("distribution")
+    bins = baseline_pred.get("bins")
+    if not isinstance(distribution, list) or not distribution:
+        return None
+
+    expected = np.array([float(v) for v in distribution], dtype=float)
+    if isinstance(bins, list) and len(bins) == len(expected) + 1:
+        bin_edges = np.array([float(v) for v in bins], dtype=float)
+    else:
+        bin_edges = np.linspace(0.0, 1.0, len(expected) + 1)
+
+    model_bytes = load_bytes_from_storage_uri(supabase, storage_bucket(), model_uri)
+    model = joblib.load(io.BytesIO(model_bytes))
+
+    input_columns = [column for column in FEATURE_COLUMNS if column in current_df.columns]
+    if not input_columns:
+        return None
+    current_probs = model.predict_proba(current_df[input_columns])[:, 1]
+
+    current_counts, _ = np.histogram(current_probs, bins=bin_edges)
+    current_dist = current_counts / max(int(current_counts.sum()), 1)
+
+    psi = compute_psi(expected=expected, current=current_dist)
+    return {
+        "psi": round(psi, 6),
+        "status": prediction_status_from_psi(psi),
+        "baseline_mean": float(baseline_pred.get("mean", 0.0)),
+        "current_mean": float(np.mean(current_probs)) if len(current_probs) else 0.0,
+        "baseline_distribution": expected.tolist(),
+        "current_distribution": current_dist.tolist(),
+    }
+
+
+def combine_status(feature_status: str, prediction_status: Optional[str]) -> str:
+    if prediction_status is None:
+        return feature_status
+    return feature_status if STATUS_RANK[feature_status] >= STATUS_RANK[prediction_status] else prediction_status
 
 
 def extract_feature_rows(run_id: str, drift_result: Dict[str, Any]) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for feature_name, details in drift_result.get("drift_by_columns", {}).items():
         score = details.get("drift_score")
+        drifted = bool(details.get("drift_detected", False))
+        test_name = details.get("stattest_name", "unknown")
+
         severity = "low"
-        if isinstance(score, (int, float)):
-            if score >= 0.25:
-                severity = "high"
-            elif score >= 0.1:
-                severity = "medium"
+        if drifted and isinstance(score, (int, float)):
+            score_value = float(score)
+            if "p_value" in test_name.lower() or "p-value" in test_name.lower():
+                if score_value < 0.01:
+                    severity = "high"
+                elif score_value < 0.05:
+                    severity = "medium"
+            else:
+                if score_value >= 0.25:
+                    severity = "high"
+                elif score_value >= 0.1:
+                    severity = "medium"
 
         rows.append(
             {
                 "run_id": run_id,
                 "feature_name": feature_name,
-                "test_name": details.get("stattest_name", "unknown"),
+                "test_name": test_name,
                 "score": to_json_number(score),
                 "p_value": to_json_number(details.get("p_value")),
-                "drifted": bool(details.get("drift_detected", False)),
+                "drifted": drifted,
                 "severity": severity,
             }
         )
@@ -276,12 +420,17 @@ def main() -> None:
             domain_key=args.domain,
             baseline_version=args.baseline_version,
         )
-        current_df, current_source = load_current_dataframe(supabase=supabase, domain_key=args.domain)
+        current_df, current_source, feature_batch = load_current_dataframe(
+            supabase=supabase,
+            domain_id=domain_id,
+            domain_key=args.domain,
+            batch_id=args.batch_id,
+        )
         current_df = align_to_reference_schema(current_df=current_df, reference_df=baseline_df)
 
         log(
             "monitor sources "
-            f"baseline={baseline_source} current={current_source} "
+            f"baseline={baseline_source} current_batch={current_source} "
             f"batch_id={args.batch_id}"
         )
 
@@ -294,13 +443,24 @@ def main() -> None:
 
         report = Report(metrics=[DataDriftPreset()])
         with warnings.catch_warnings():
-            # Chi-square/stat-test internals can emit divide-by-zero warnings on sparse demo bins.
             warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
             report.run(reference_data=baseline_df, current_data=current_df)
         report_dict = report_to_dict(report)
         drift_result = get_drift_result(report_dict)
 
-        drift_status, drift_summary = summarize_drift(drift_result)
+        feature_status, drift_summary = summarize_feature_drift(drift_result)
+        prediction = compute_prediction_drift(supabase=supabase, baseline=baseline, current_df=current_df)
+        prediction_status = prediction.get("status") if prediction else None
+        overall_status = combine_status(feature_status=feature_status, prediction_status=prediction_status)
+
+        deterministic = (
+            f"{drift_summary['drifted_columns']} of {drift_summary['total_columns']} monitored features drifted. "
+            f"Recommended action: {'investigate immediately' if overall_status == 'red' else 'continue monitoring'}"
+        )
+        if prediction:
+            deterministic += f" Prediction PSI={prediction['psi']} ({prediction['status']})."
+        drift_summary["deterministic_summary"] = deterministic
+
         feature_rows = extract_feature_rows(run_id, drift_result)
         if feature_rows:
             supabase.upsert(
@@ -310,12 +470,12 @@ def main() -> None:
             )
 
         html_report_uri = None
-        storage_bucket = os.getenv("DRIFTWATCH_STORAGE_BUCKET", "driftwatch-artifacts")
+        bucket = storage_bucket()
         if os.getenv("DRIFTWATCH_UPLOAD_HTML", "true").lower() in {"1", "true", "yes"}:
             html_temp = Path("/tmp") / f"{run_id}.html"
             report.save_html(str(html_temp))
             html_report_uri = supabase.upload_bytes(
-                storage_bucket,
+                bucket,
                 f"reports/{run_id}.html",
                 html_temp.read_bytes(),
                 "text/html",
@@ -328,21 +488,29 @@ def main() -> None:
             "source": {
                 "baseline": baseline_source,
                 "current_batch": current_source,
+                "feature_batch_id": feature_batch.get("id") if feature_batch else None,
+                "scenario": feature_batch.get("scenario") if feature_batch else None,
+                "source_mode": feature_batch.get("source_mode") if feature_batch else "legacy",
             },
             "drift": drift_summary,
+            "prediction_drift": prediction,
         }
 
-        if drift_status == "red":
+        if overall_status == "red":
+            top_features = drift_summary.get("top_features", [])
             supabase.insert(
                 "action_tickets",
                 [
                     {
                         "run_id": run_id,
                         "ticket_type": "investigate",
+                        "title": "Critical drift detected",
+                        "description": "Feature and/or prediction drift exceeded critical thresholds.",
                         "status": "open",
                         "payload": {
                             "reason": "Critical drift detected",
-                            "top_features": drift_summary["top_features"],
+                            "top_features": top_features,
+                            "prediction_drift": prediction,
                         },
                     }
                 ],
@@ -353,8 +521,11 @@ def main() -> None:
             filters={"id": f"eq.{run_id}"},
             data={
                 "baseline_id": baseline["id"],
+                "feature_batch_id": feature_batch.get("id") if feature_batch else None,
+                "scenario": feature_batch.get("scenario") if feature_batch else None,
                 "status": "completed",
-                "drift_status": drift_status,
+                "drift_status": overall_status,
+                "prediction_drift_score": prediction.get("psi") if prediction else None,
                 "report_json": compact_report,
                 "html_report_uri": html_report_uri,
                 "finished_at": now_iso(),
@@ -367,7 +538,7 @@ def main() -> None:
             data={"last_worker_heartbeat": now_iso()},
         )
 
-        log(f"run {run_id} completed with drift_status={drift_status}")
+        log(f"run {run_id} completed with drift_status={overall_status}")
     except Exception as exc:
         log(f"run {run_id} failed: {exc}")
         log(traceback.format_exc())
