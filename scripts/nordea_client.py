@@ -78,6 +78,11 @@ def fetch_access_token(cfg: NordeaConfig) -> Optional[str]:
             timeout=30,
         )
 
+    def summarize_response(resp: requests.Response) -> str:
+        body = (resp.text or "").strip().replace("\n", " ")
+        content_type = resp.headers.get("Content-Type", "")
+        return f"status={resp.status_code} content_type={content_type} body={body[:260]}"
+
     responses = [call_token(use_basic_auth=False), call_token(use_basic_auth=True)]
     response = responses[-1]
     for candidate in responses:
@@ -85,12 +90,13 @@ def fetch_access_token(cfg: NordeaConfig) -> Optional[str]:
             response = candidate
             break
 
-    payload = response.json()
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
     token = payload.get("access_token")
     if response.status_code >= 400 or not token:
-        status_text = " | ".join(
-            f"{resp.status_code}:{(resp.text or '').strip()[:220]}" for resp in responses
-        )
+        status_text = " | ".join(summarize_response(resp) for resp in responses)
         raise RuntimeError(
             "Nordea token request failed. "
             f"Attempt details: {status_text}. "

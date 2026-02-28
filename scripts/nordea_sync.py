@@ -218,8 +218,20 @@ def account_id_of(record: Dict[str, Any]) -> Optional[str]:
 
 def http_get_json(url: str, headers: Dict[str, str], params: Optional[Dict[str, str]] = None) -> Any:
     response = requests.get(url, headers=headers, params=params, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    if response.status_code >= 400:
+        body = (response.text or "").strip().replace("\n", " ")
+        raise RuntimeError(
+            f"Nordea GET failed url={url} params={params} status={response.status_code} "
+            f"content_type={response.headers.get('Content-Type', '')} body={body[:260]}"
+        )
+    try:
+        return response.json()
+    except ValueError as exc:
+        body = (response.text or "").strip().replace("\n", " ")
+        raise RuntimeError(
+            f"Nordea GET returned non-JSON url={url} params={params} status={response.status_code} "
+            f"content_type={response.headers.get('Content-Type', '')} body={body[:260]}"
+        ) from exc
 
 
 def load_live_transactions() -> Tuple[List[Dict[str, Any]], Dict[str, Any], str]:
