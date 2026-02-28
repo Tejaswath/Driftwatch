@@ -1,12 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   color-scheme: light;
-  --bg: #f5f7fa;
-  --surface: #ffffff;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --border: #d1d5db;
-  --accent: #0f766e;
-  --danger: #b91c1c;
 }
 
 * {
@@ -15,90 +12,28 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top right, #e6fffa, var(--bg) 45%);
-  color: var(--text);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  min-height: 100vh;
+  background: #ffffff;
+  color: #111827;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.topbar {
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  padding: 0.75rem 1.25rem;
-}
-
-.topbar nav {
-  display: flex;
-  gap: 1rem;
-}
-
-.topbar a {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.container {
-  margin: 0 auto;
-  max-width: 980px;
-  padding: 1.5rem;
-}
-
-.stack {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem;
-}
-
-.run-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-
-.run-table th,
-.run-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 0.55rem;
-  text-align: left;
-  font-size: 0.92rem;
-}
-
-button {
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 0.6rem 0.9rem;
-  cursor: pointer;
-}
-
-input,
-textarea,
-select {
-  padding: 0.55rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-
-.error {
-  color: var(--danger);
-  margin: 0;
-}
-
-.json {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.82rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: #111827;
-  color: #f9fafb;
-  padding: 0.75rem;
-  border-radius: 8px;
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-5px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(5px);
+  }
 }

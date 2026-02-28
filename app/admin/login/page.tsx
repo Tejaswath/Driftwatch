@@ -2,10 +2,10 @@ import AdminLoginForm from "@/components/admin-login-form";
 
 export default function AdminLoginPage() {
   return (
-    <section className="stack">
-      <h1>Admin Login</h1>
-      <p>Use the server-side admin password to dispatch workflows.</p>
-      <AdminLoginForm />
-    </section>
+    <div className="min-h-screen bg-[#F4F4F4] p-6">
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <AdminLoginForm />
+      </div>
+    </div>
   );
 }

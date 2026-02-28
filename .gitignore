@@ -7,3 +7,5 @@ out
 *.pyc
 __pycache__
 instruction.md
+figma_export_v1/
+DriftWatch Frontend Design.zip

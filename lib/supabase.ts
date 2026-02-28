@@ -1,5 +1,5 @@
 import { publicConfig } from "@/lib/config";
-import type { DomainHeartbeat, MonitorRun } from "@/lib/types";
+import type { ActionTicket, DomainHeartbeat, FeatureDriftMetric, MonitorRun } from "@/lib/types";
 
 const DEFAULT_HEADERS = {
   apikey: publicConfig.supabaseAnonKey,
@@ -43,8 +43,22 @@ export async function getRunById(id: string): Promise<MonitorRun | null> {
   return rows[0] ?? null;
 }
 
+export async function getFeatureMetricsByRunId(runId: string): Promise<FeatureDriftMetric[]> {
+  const escapedId = encodeURIComponent(runId);
+  return supabaseGet<FeatureDriftMetric[]>(
+    `feature_drift_metrics?select=feature_name,test_name,score,p_value,drifted,severity&run_id=eq.${escapedId}&order=score.desc.nullslast`
+  );
+}
+
 export async function getDomainHeartbeats(): Promise<DomainHeartbeat[]> {
   return supabaseGet<DomainHeartbeat[]>(
     "domains?select=key,last_worker_heartbeat,enabled&enabled=eq.true&order=key.asc"
+  );
+}
+
+export async function getActionTicketsByRunId(runId: string): Promise<ActionTicket[]> {
+  const escapedId = encodeURIComponent(runId);
+  return supabaseGet<ActionTicket[]>(
+    `action_tickets?select=id,ticket_type,status,created_at&run_id=eq.${escapedId}&order=created_at.desc`
   );
 }
