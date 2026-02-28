@@ -8,6 +8,11 @@ on:
         type: string
         required: false
         default: "nordea"
+      batch_id:
+        description: "Batch identifier"
+        type: string
+        required: false
+        default: "sync"
 
 jobs:
   sync:
@@ -17,6 +22,13 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NORDEA_ENV: ${{ secrets.NORDEA_ENV || 'sandbox' }}
+      NORDEA_SIGNATURE_BYPASS: ${{ secrets.NORDEA_SIGNATURE_BYPASS || 'true' }}
+      NORDEA_CLIENT_ID: ${{ secrets.NORDEA_CLIENT_ID }}
+      NORDEA_CLIENT_SECRET: ${{ secrets.NORDEA_CLIENT_SECRET }}
+      NORDEA_TOKEN_URL: ${{ secrets.NORDEA_TOKEN_URL }}
+      NORDEA_API_BASE_URL: ${{ secrets.NORDEA_API_BASE_URL }}
+      NORDEA_LIVE_READ: ${{ secrets.NORDEA_LIVE_READ || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,4 +42,11 @@ jobs:
           pip install pandas requests
 
       - name: Run sync script
-        run: python scripts/nordea_sync.py --domain "${{ github.event.inputs.domain || 'nordea' }}"
+        run: |
+          BATCH_ID="${{ github.event.inputs.batch_id }}"
+          if [ -z "$BATCH_ID" ] || [ "$BATCH_ID" = "sync" ]; then
+            BATCH_ID="sync-${GITHUB_RUN_ID}"
+          fi
+          python scripts/nordea_sync.py \
+            --domain "${{ github.event.inputs.domain || 'nordea' }}" \
+            --batch-id "${BATCH_ID}"
