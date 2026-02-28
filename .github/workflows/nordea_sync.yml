@@ -28,6 +28,7 @@ jobs:
       NORDEA_CLIENT_SECRET: ${{ secrets.NORDEA_CLIENT_SECRET }}
       NORDEA_TOKEN_URL: ${{ secrets.NORDEA_TOKEN_URL }}
       NORDEA_API_BASE_URL: ${{ secrets.NORDEA_API_BASE_URL }}
+      NORDEA_ACCESS_TOKEN: ${{ secrets.NORDEA_ACCESS_TOKEN }}
       NORDEA_LIVE_READ: ${{ secrets.NORDEA_LIVE_READ || 'false' }}
     steps:
       - uses: actions/checkout@v4

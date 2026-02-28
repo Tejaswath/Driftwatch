@@ -226,7 +226,11 @@ def load_live_transactions() -> Tuple[List[Dict[str, Any]], Dict[str, Any], str]
     cfg = load_nordea_config()
     validate_sandbox_bypass(cfg)
 
-    token = fetch_access_token(cfg)
+    token = os.getenv("NORDEA_ACCESS_TOKEN", "").strip()
+    if token:
+        log("nordea_sync using NORDEA_ACCESS_TOKEN override")
+    else:
+        token = fetch_access_token(cfg)
     if not token:
         raise RuntimeError("Missing token credentials. Set NORDEA_TOKEN_URL, NORDEA_CLIENT_ID, NORDEA_CLIENT_SECRET.")
 

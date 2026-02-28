@@ -1,11 +1,11 @@
 import os
 import uuid
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import requests
 
-from common import log, now_iso, require_env
+from common import log, now_iso
 
 
 @dataclass
@@ -40,6 +40,10 @@ def build_headers(cfg: NordeaConfig, access_token: Optional[str] = None) -> Dict
         "Accept": "application/json",
         "x-request-id": str(uuid.uuid4()),
     }
+    if cfg.client_id:
+        headers["x-ibm-client-id"] = cfg.client_id
+    if cfg.client_secret:
+        headers["x-ibm-client-secret"] = cfg.client_secret
     if access_token:
         headers["Authorization"] = f"Bearer {access_token}"
 
@@ -54,21 +58,44 @@ def fetch_access_token(cfg: NordeaConfig) -> Optional[str]:
     if not (cfg.token_url and cfg.client_id and cfg.client_secret):
         return None
 
-    response = requests.post(
-        cfg.token_url,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        data={"grant_type": "client_credentials"},
-        auth=(cfg.client_id, cfg.client_secret),
-        timeout=30,
-    )
+    validate_sandbox_bypass(cfg)
 
-    if response.status_code >= 400:
-        raise RuntimeError(f"Nordea token request failed: {response.status_code} {response.text}")
+    def call_token(use_basic_auth: bool) -> requests.Response:
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "x-request-id": str(uuid.uuid4()),
+            "x-ibm-client-id": cfg.client_id,
+            "x-ibm-client-secret": cfg.client_secret,
+        }
+        if cfg.bypass_signature:
+            headers["Signature"] = "SKIP_SIGNATURE_VALIDATION_FOR_SANDBOX"
+        auth: Optional[Tuple[str, str]] = (cfg.client_id, cfg.client_secret) if use_basic_auth else None
+        return requests.post(
+            cfg.token_url,
+            headers=headers,
+            data={"grant_type": "client_credentials"},
+            auth=auth,
+            timeout=30,
+        )
+
+    responses = [call_token(use_basic_auth=False), call_token(use_basic_auth=True)]
+    response = responses[-1]
+    for candidate in responses:
+        if candidate.status_code < 400:
+            response = candidate
+            break
 
     payload = response.json()
     token = payload.get("access_token")
-    if not token:
-        raise RuntimeError("Nordea token response missing access_token")
+    if response.status_code >= 400 or not token:
+        status_text = " | ".join(
+            f"{resp.status_code}:{(resp.text or '').strip()[:220]}" for resp in responses
+        )
+        raise RuntimeError(
+            "Nordea token request failed. "
+            f"Attempt details: {status_text}. "
+            "If this is personal/v5, direct client_credentials may be rejected until full authorization flow is implemented."
+        )
     return token
 
 
