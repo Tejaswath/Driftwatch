@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import io
 import json
 import os
 import traceback
@@ -36,12 +37,90 @@ def compute_schema_hash(df: pd.DataFrame) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def load_demo_batches() -> Tuple[pd.DataFrame, pd.DataFrame]:
-    baseline_path = Path("data/demo/baseline.csv")
-    current_path = Path("data/demo/current.csv")
-    baseline_df = pd.read_csv(baseline_path)
-    current_df = pd.read_csv(current_path)
-    return baseline_df, current_df
+def storage_bucket() -> str:
+    return os.getenv("DRIFTWATCH_STORAGE_BUCKET", "driftwatch-artifacts")
+
+
+def load_csv_from_storage(supabase, bucket: str, path: str) -> pd.DataFrame:
+    raw = supabase.download_public_bytes(bucket, path)
+    return pd.read_csv(io.BytesIO(raw))
+
+
+def load_baseline_dataframe(
+    supabase, domain_id: str, domain_key: str, baseline_version: str
+) -> Tuple[Dict[str, Any], pd.DataFrame, str]:
+    bucket = storage_bucket()
+    baseline_path = f"baselines/{domain_key}/{baseline_version}.csv"
+    baseline_uri = supabase.public_object_url(bucket, baseline_path)
+
+    baseline_source = "storage"
+    try:
+        baseline_df = load_csv_from_storage(supabase, bucket, baseline_path)
+    except Exception as exc:  # noqa: BLE001
+        baseline_df = pd.read_csv(Path("data/demo/baseline.csv"))
+        supabase.upload_bytes(
+            bucket,
+            baseline_path,
+            baseline_df.to_csv(index=False).encode("utf-8"),
+            "text/csv",
+        )
+        baseline_source = f"demo_fallback ({exc})"
+
+    schema_hash = compute_schema_hash(baseline_df)
+    upserted = supabase.upsert(
+        "baselines",
+        [
+            {
+                "domain_id": domain_id,
+                "baseline_version": baseline_version,
+                "schema_version": "v1",
+                "schema_hash": schema_hash,
+                "row_count": len(baseline_df),
+                "storage_uri": baseline_uri,
+                "reason": f"monitor reference source={baseline_source}",
+            }
+        ],
+        on_conflict="domain_id,baseline_version",
+    )
+    return upserted[0], baseline_df, baseline_source
+
+
+def load_current_dataframe(supabase, domain_key: str) -> Tuple[pd.DataFrame, str]:
+    bucket = storage_bucket()
+    current_path = f"feature-batches/{domain_key}/current.csv"
+    try:
+        current_df = load_csv_from_storage(supabase, bucket, current_path)
+        return current_df, "synced_feature_batch"
+    except Exception as exc:  # noqa: BLE001
+        current_df = pd.read_csv(Path("data/demo/current.csv"))
+        return current_df, f"demo_fallback ({exc})"
+
+
+def align_to_reference_schema(current_df: pd.DataFrame, reference_df: pd.DataFrame) -> pd.DataFrame:
+    reference_columns = list(reference_df.columns)
+    current_columns = list(current_df.columns)
+
+    missing = [column for column in reference_columns if column not in current_columns]
+    extra = [column for column in current_columns if column not in reference_columns]
+    if missing or extra:
+        raise RuntimeError(
+            "Schema column mismatch between baseline and current batch. "
+            f"missing={missing} extra={extra}"
+        )
+
+    aligned = current_df[reference_columns].copy()
+    for column in reference_columns:
+        target_dtype = reference_df[column].dtype
+        if pd.api.types.is_numeric_dtype(target_dtype):
+            aligned[column] = pd.to_numeric(aligned[column], errors="coerce").fillna(0)
+            if pd.api.types.is_integer_dtype(target_dtype):
+                aligned[column] = aligned[column].round().astype(target_dtype)
+            else:
+                aligned[column] = aligned[column].astype(target_dtype)
+        else:
+            aligned[column] = aligned[column].astype(str)
+
+    return aligned
 
 
 def report_to_dict(report: Report) -> Dict[str, Any]:
@@ -159,40 +238,6 @@ def get_domain_id(supabase, key: str) -> str:
     return rows[0]["id"]
 
 
-def get_or_create_baseline(supabase, domain_id: str, domain_key: str, baseline_version: str, baseline_df: pd.DataFrame) -> Dict[str, Any]:
-    rows = supabase.select(
-        "baselines",
-        select="id,domain_id,baseline_version,schema_hash,schema_version,row_count,storage_uri",
-        filters={"domain_id": f"eq.{domain_id}", "baseline_version": f"eq.{baseline_version}"},
-        limit=1,
-    )
-    if rows:
-        return rows[0]
-
-    schema_hash = compute_schema_hash(baseline_df)
-    storage_bucket = os.getenv("DRIFTWATCH_STORAGE_BUCKET", "driftwatch-artifacts")
-    storage_path = f"baselines/{domain_key}/{baseline_version}.csv"
-    storage_uri = supabase.upload_bytes(
-        storage_bucket, storage_path, baseline_df.to_csv(index=False).encode("utf-8"), "text/csv"
-    )
-
-    inserted = supabase.insert(
-        "baselines",
-        [
-            {
-                "domain_id": domain_id,
-                "baseline_version": baseline_version,
-                "schema_version": "v1",
-                "schema_hash": schema_hash,
-                "row_count": len(baseline_df),
-                "storage_uri": storage_uri,
-                "reason": "auto-created from demo baseline",
-            }
-        ],
-    )
-    return inserted[0]
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--domain", default=os.getenv("DOMAIN", "nordea"))
@@ -225,13 +270,19 @@ def main() -> None:
             data={"status": "processing", "started_at": now_iso()},
         )
 
-        baseline_df, current_df = load_demo_batches()
-        baseline = get_or_create_baseline(
+        baseline, baseline_df, baseline_source = load_baseline_dataframe(
             supabase=supabase,
             domain_id=domain_id,
             domain_key=args.domain,
             baseline_version=args.baseline_version,
-            baseline_df=baseline_df,
+        )
+        current_df, current_source = load_current_dataframe(supabase=supabase, domain_key=args.domain)
+        current_df = align_to_reference_schema(current_df=current_df, reference_df=baseline_df)
+
+        log(
+            "monitor sources "
+            f"baseline={baseline_source} current={current_source} "
+            f"batch_id={args.batch_id}"
         )
 
         current_schema_hash = compute_schema_hash(current_df)
@@ -274,6 +325,10 @@ def main() -> None:
             "domain": args.domain,
             "baseline_version": args.baseline_version,
             "generated_at": now_iso(),
+            "source": {
+                "baseline": baseline_source,
+                "current_batch": current_source,
+            },
             "drift": drift_summary,
         }
 

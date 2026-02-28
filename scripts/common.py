@@ -2,6 +2,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from urllib.parse import quote
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
@@ -89,6 +90,20 @@ class SupabaseClient:
         response = requests.post(url, headers=headers, data=content, timeout=60)
         response.raise_for_status()
         return f"{self.storage_base}/object/public/{bucket}/{path}"
+
+    def public_object_url(self, bucket: str, path: str) -> str:
+        safe_path = quote(path.lstrip("/"), safe="/")
+        return f"{self.storage_base}/object/public/{bucket}/{safe_path}"
+
+    def download_public_bytes(self, bucket: str, path: str) -> bytes:
+        url = self.public_object_url(bucket, path)
+        headers = {
+            "apikey": self.service_key,
+            "Authorization": f"Bearer {self.service_key}",
+        }
+        response = requests.get(url, headers=headers, timeout=60)
+        response.raise_for_status()
+        return response.content
 
 
 def now_iso() -> str:
