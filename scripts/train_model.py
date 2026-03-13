@@ -79,6 +79,7 @@ def run_training(
     rows: int,
     seed: Optional[int],
     scenario: str,
+    model_role: str = "champion",
 ) -> Dict[str, Any]:
     supabase = get_supabase()
     domains = supabase.select("domains", select="id,key", filters={"key": f"eq.{domain}"}, limit=1)
@@ -112,6 +113,10 @@ def run_training(
         "application/octet-stream",
     )
 
+    # Capture git commit hash for lineage (GITHUB_SHA is set in GitHub Actions)
+    import os as _os
+    training_commit_hash = _os.getenv("GITHUB_SHA", "local")
+
     upserted = supabase.upsert(
         "baselines",
         [
@@ -125,6 +130,11 @@ def run_training(
                 "model_uri": model_uri,
                 "baseline_predictions_json": prediction_hist,
                 "reason": f"synthetic baseline refresh scenario={scenario}",
+                "model_role": model_role,
+                "training_commit_hash": training_commit_hash,
+                "metrics_json": metrics,
+                "is_active": True,
+                "promoted_at": now_iso(),
             }
         ],
         on_conflict="domain_id,baseline_version",
@@ -158,6 +168,7 @@ def main() -> None:
     parser.add_argument("--rows", type=int, default=200)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--scenario", default="stable_salary")
+    parser.add_argument("--model-role", default="champion", choices=["champion", "challenger"])
     args = parser.parse_args()
 
     run_training(
@@ -166,6 +177,7 @@ def main() -> None:
         rows=args.rows,
         seed=args.seed,
         scenario=args.scenario,
+        model_role=args.model_role,
     )
 
 

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/format";
 import { getRunById, getTicketById } from "@/lib/supabase";
+import { requireAdminSession } from "@/lib/admin-auth";
+import TicketActions from "@/components/ticket-actions";
 
 type TicketPageProps = {
   params: {
@@ -16,7 +18,10 @@ export default async function TicketDetailsPage({ params }: TicketPageProps) {
     notFound();
   }
 
-  const run = await getRunById(ticket.run_id).catch(() => null);
+  const [run, isAdmin] = await Promise.all([
+    getRunById(ticket.run_id).catch(() => null),
+    Promise.resolve(requireAdminSession()),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -72,6 +77,13 @@ export default async function TicketDetailsPage({ params }: TicketPageProps) {
           )}
         </div>
       </section>
+
+      {isAdmin ? (
+        <section className="rounded-lg border border-[#E5E5E5] bg-white p-6">
+          <h2 className="mb-3 text-lg font-bold text-nordea-navy">Actions</h2>
+          <TicketActions ticketId={ticket.id} currentStatus={ticket.status} />
+        </section>
+      ) : null}
 
       <section className="rounded-lg border border-[#E5E5E5] bg-white p-6">
         <h2 className="mb-3 text-lg font-bold text-nordea-navy">Ticket Payload</h2>

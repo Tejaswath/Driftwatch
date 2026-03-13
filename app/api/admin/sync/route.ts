@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { dispatchAdminWorkflow } from "@/lib/admin-dispatch";
+import { validateBatchInputs } from "@/lib/admin-validation";
 
 type SyncBody = {
   domain?: string;
@@ -11,6 +12,11 @@ type SyncBody = {
 
 export async function POST(request: NextRequest) {
   const body = ((await request.json().catch(() => ({}))) ?? {}) as SyncBody;
+
+  const errors = validateBatchInputs(body as Record<string, unknown>);
+  if (errors.length > 0) {
+    return NextResponse.json({ error: "Validation failed", details: errors }, { status: 400 });
+  }
 
   const payload: Record<string, string> = {
     domain: body.domain ?? "nordea",

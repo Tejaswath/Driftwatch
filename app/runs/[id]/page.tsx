@@ -2,10 +2,17 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, ChevronRight, Download } from "lucide-react";
 import CollapsibleSection from "@/components/collapsible-section";
-import { getActionTicketsByRunId, getFeatureMetricsByRunId, getRunById } from "@/lib/supabase";
+import {
+  getActionTicketsByRunId,
+  getDataQualityMetricsByRunId,
+  getFeatureMetricsByRunId,
+  getPerformanceMetricsByRunId,
+  getRunById,
+} from "@/lib/supabase";
 import { formatAbsoluteTime, formatDuration, formatRelativeTime, formatScore } from "@/lib/format";
 import { DriftBadge, StatusBadge, YesNoBadge } from "@/components/status-badge";
 import { toUiRun } from "@/lib/ui-mappers";
+import RunStatusPoller from "@/components/run-status-poller";
 
 type RunDetailPageProps = {
   params: {
@@ -61,9 +68,11 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
   }
 
   const run = toUiRun(runRaw);
-  const [metrics, tickets] = await Promise.all([
+  const [metrics, tickets, performanceMetrics, dataQualityMetrics] = await Promise.all([
     getFeatureMetricsByRunId(run.id).catch(() => []),
-    getActionTicketsByRunId(run.id).catch(() => [])
+    getActionTicketsByRunId(run.id).catch(() => []),
+    getPerformanceMetricsByRunId(run.id).catch(() => []),
+    getDataQualityMetricsByRunId(run.id).catch(() => []),
   ]);
 
   const prediction = parsePredictionPayload(run.reportJson);
@@ -89,6 +98,7 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
 
   return (
     <div className="space-y-6">
+      <RunStatusPoller status={run.status} />
       <div className="flex items-center gap-2 text-xs text-[#6B7280]">
         <Link href="/runs" className="text-nordea-teal hover:underline">
           Runs
@@ -293,6 +303,57 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
           <h2 className="mb-3 text-lg font-bold text-[#EF4444]">Error</h2>
           <pre className="overflow-x-auto rounded bg-[#F4F4F4] p-3 font-mono text-sm text-nordea-navy">{run.errorText}</pre>
         </section>
+      ) : null}
+
+      {performanceMetrics.length > 0 ? (
+        <section className="rounded-lg border border-[#E5E5E5] bg-white p-6">
+          <h2 className="mb-4 text-lg font-bold text-nordea-navy">Model Performance</h2>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+            {performanceMetrics.map((m) => (
+              <div key={m.metric_name} className="rounded-lg border border-[#E5E5E5] bg-[#F9F9F9] p-4">
+                <p className="text-xs uppercase text-[#6B7280]">{m.metric_name}</p>
+                <p className="text-2xl font-bold text-nordea-navy">{formatScore(m.metric_value, 4)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {dataQualityMetrics.length > 0 ? (
+        <CollapsibleSection title="Data Quality" defaultOpen={dataQualityMetrics.some((m) => m.missing_rate != null && m.missing_rate > 0.05)}>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-[#F4F4F4]">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Feature</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Missing Rate</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Outlier Rate</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Schema Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dataQualityMetrics.map((m, index) => (
+                  <tr key={m.feature_name} className={index % 2 === 0 ? "bg-white" : "bg-[#F9F9F9]"}>
+                    <td className="px-4 py-3 text-sm text-nordea-navy">{m.feature_name}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={(m.missing_rate ?? 0) > 0.05 ? "font-bold text-[#EF4444]" : "text-[#6B7280]"}>
+                        {formatScore(m.missing_rate, 4)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={(m.outlier_rate ?? 0) > 0.10 ? "font-bold text-[#F59E0B]" : "text-[#6B7280]"}>
+                        {formatScore(m.outlier_rate, 4)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <YesNoBadge value={m.schema_change} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CollapsibleSection>
       ) : null}
 
       <section className="rounded-lg border border-[#E5E5E5] bg-white p-6">

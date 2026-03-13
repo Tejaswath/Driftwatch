@@ -82,6 +82,7 @@ export function toUiRun(run: MonitorRun): UiRun {
     predictionDriftScore: run.prediction_drift_score,
     sourceMode: inferSourceMode(payload, run),
     driftRatio,
+    triggeredBy: run.triggered_by ?? null,
     topFeatures
   };
 }
