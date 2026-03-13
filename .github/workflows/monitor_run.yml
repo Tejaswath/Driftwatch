@@ -23,6 +23,11 @@ on:
         type: string
         required: false
         default: "scheduled"
+      triggered_by:
+        description: "Who triggered this run (admin or cron)"
+        type: string
+        required: false
+        default: "admin"
   schedule:
     - cron: "17 3 * * *"
 
