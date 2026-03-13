@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { dispatchAdminWorkflow } from "@/lib/admin-dispatch";
+import { validateRunInputs } from "@/lib/admin-validation";
 
 type RunBody = {
   domain?: string;
@@ -10,6 +11,12 @@ type RunBody = {
 
 export async function POST(request: NextRequest) {
   const body = ((await request.json().catch(() => ({}))) ?? {}) as RunBody;
+
+  const errors = validateRunInputs(body as Record<string, unknown>);
+  if (errors.length > 0) {
+    return NextResponse.json({ error: "Validation failed", details: errors }, { status: 400 });
+  }
+
   const domain = body.domain ?? "nordea";
   const baselineVersion = body.baseline_version ?? "v1";
   const batchId = body.batch_id ?? `manual-${Date.now()}`;
@@ -19,6 +26,7 @@ export async function POST(request: NextRequest) {
     domain,
     baseline_version: baselineVersion,
     batch_id: batchId,
-    scenario
+    scenario,
+    triggered_by: "admin",
   });
 }

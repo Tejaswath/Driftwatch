@@ -21,8 +21,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const latestRun = latestRunRaw ? toUiRun(latestRunRaw) : null;
 
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Prevent flash of wrong theme by applying saved preference synchronously */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('dw_theme');var d=window.matchMedia('(prefers-color-scheme:dark)').matches;if(t==='dark'||(t===null&&d)){document.documentElement.classList.add('dark')}}catch(e){}})()`,
+          }}
+        />
+      </head>
+      <body className="bg-white dark:bg-[#111827] dark:text-white">
         <GlobalNav latestRun={latestRun} />
         <main className="mx-auto w-full max-w-[1280px] p-6">{children}</main>
         <Toaster richColors position="top-right" />

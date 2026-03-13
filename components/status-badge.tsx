@@ -50,8 +50,13 @@ const driftColor: Record<DriftStatus, string> = {
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
+  const isProcessing = status === "processing";
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1.5 ${statusClasses[status]}`}>
+    <span
+      role="status"
+      aria-label={statusLabels[status]}
+      className={`inline-flex items-center rounded-full px-3 py-1.5 ${statusClasses[status]} ${isProcessing ? "animate-pulse" : ""}`}
+    >
       <span className="text-xs font-medium">{statusLabels[status]}</span>
     </span>
   );
@@ -60,13 +65,13 @@ export function StatusBadge({ status }: StatusBadgeProps) {
 export function DriftBadge({ severity }: DriftBadgeProps) {
   if (!severity) {
     return (
-      <span className="inline-flex items-center rounded-full bg-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#374151]">
+      <span role="status" aria-label="Drift status unknown" className="inline-flex items-center rounded-full bg-[#D1D5DB] px-3 py-1.5 text-xs font-medium text-[#374151]">
         Unknown
       </span>
     );
   }
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1.5 ${driftClasses[severity]}`}>
+    <span role="status" aria-label={`Drift: ${driftLabels[severity]}`} className={`inline-flex items-center rounded-full px-3 py-1.5 ${driftClasses[severity]}`}>
       <span className="text-xs font-medium">{driftLabels[severity]}</span>
     </span>
   );

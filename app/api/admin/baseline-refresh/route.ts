@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { dispatchAdminWorkflow } from "@/lib/admin-dispatch";
+import { validateBaselineRefreshInputs } from "@/lib/admin-validation";
 
 type BaselineBody = {
   domain?: string;
@@ -12,6 +13,11 @@ type BaselineBody = {
 
 export async function POST(request: NextRequest) {
   const body = ((await request.json().catch(() => ({}))) ?? {}) as BaselineBody;
+
+  const errors = validateBaselineRefreshInputs(body as Record<string, unknown>);
+  if (errors.length > 0) {
+    return NextResponse.json({ error: "Validation failed", details: errors }, { status: 400 });
+  }
 
   return dispatchAdminWorkflow(request, "baseline_refresh.yml", {
     domain: body.domain ?? "nordea",

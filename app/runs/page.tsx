@@ -1,3 +1,5 @@
+export const revalidate = 60;
+
 import RunsClientTable from "@/components/runs-client-table";
 import { getRuns } from "@/lib/supabase";
 import { toUiRuns } from "@/lib/ui-mappers";

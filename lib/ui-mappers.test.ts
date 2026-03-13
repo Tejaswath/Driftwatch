@@ -35,6 +35,7 @@ function buildRun(overrides: Partial<MonitorRun> = {}): MonitorRun {
     started_at: "2026-02-28T10:00:00.000Z",
     finished_at: "2026-02-28T10:01:00.000Z",
     created_at: "2026-02-28T10:00:00.000Z",
+    triggered_by: null,
     ...overrides
   };
 }

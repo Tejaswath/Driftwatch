@@ -1,0 +1,10 @@
+# Pinned dependencies for reproducible DriftWatch pipeline builds
+# Generated from known-good environment. Update with pip freeze after testing upgrades.
+evidently==0.6.7
+scikit-learn==1.5.2
+pandas==2.2.3
+numpy==1.26.4
+joblib==1.4.2
+requests==2.32.3
+pytest==8.3.3
+pytest-cov==5.0.0

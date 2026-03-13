@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import type { UiRun } from "@/lib/types";
+import ThemeToggle from "@/components/theme-toggle";
 
 type GlobalNavProps = {
   latestRun: UiRun | null;
@@ -54,6 +55,7 @@ export default function GlobalNav({ latestRun }: GlobalNavProps) {
             <Link href="/admin" className="text-sm text-white hover:underline">
               Admin
             </Link>
+            <ThemeToggle />
           </div>
 
           <button

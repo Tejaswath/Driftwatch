@@ -11,6 +11,42 @@ It demonstrates production-shaped MLOps behavior:
 - incident ticketing
 - auditable run history
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DRIFTWATCH ARCHITECTURE                       │
+│                                                                  │
+│  INGEST               COMPUTE               STORE               │
+│  ──────               ───────               ─────               │
+│  nordea_sync      →   monitor_run.py    →   monitor_runs        │
+│  generate_batch   →   data_quality     →   feature_drift_metrics│
+│                   →   performance      →   model_performance     │
+│                   →   retrain_trigger  →   retraining_events    │
+│                   →   alert_dispatcher →   alert_logs           │
+│                                                                  │
+│  INFRA                SERVE                                      │
+│  ─────                ─────                                      │
+│  GitHub Actions   →   Supabase REST    →   Next.js (Vercel)     │
+│  (compute)            (Postgres + S3)      (dashboard + admin)  │
+│                                                                  │
+│  ALERT ROUTING                                                   │
+│  ─────────────                                                   │
+│  drift_status=red  →  GitHub Issue (auto-created via GITHUB_TOKEN)│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Storage lifecycle
+
+| Artifact | Policy |
+|----------|--------|
+| HTML reports | Off by default (`DRIFTWATCH_UPLOAD_HTML=false`). Deleted after 30 days by sweeper. |
+| Model artifacts (.joblib) | Retained per baseline version |
+| Baseline CSVs | Retained per baseline version |
+| Feature batch CSVs | Overwritten per batch_id |
+
+Storage quota is monitored in `keepalive.py` and warns at 400MB (Supabase free: 1GB).
+
 ## Why this project exists
 
 A common portfolio failure is building a strong model notebook but no production monitoring system.

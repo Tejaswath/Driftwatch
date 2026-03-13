@@ -1,3 +1,5 @@
+export const revalidate = 60;
+
 import Link from "next/link";
 import { PlayCircle } from "lucide-react";
 import CopyRunIdButton from "@/components/copy-run-id-button";
@@ -35,6 +37,24 @@ export default async function DashboardPage() {
     }));
 
   const topDriftingFeatures = latestRun?.topFeatures.slice(0, 10) ?? [];
+
+  if (runs.length === 0) {
+    return (
+      <div className="min-h-screen bg-white">
+        <div className="flex flex-col items-center justify-center gap-6 py-24 text-center">
+          <h1 className="text-2xl font-bold text-nordea-navy">No runs yet</h1>
+          <p className="text-sm text-[#6B7280]">Use the Admin panel to trigger your first monitor run.</p>
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-2 rounded-lg bg-nordea-teal px-4 py-2 text-sm font-medium text-white hover:bg-[#008A83]"
+          >
+            <PlayCircle size={16} />
+            Go to Admin Panel
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">

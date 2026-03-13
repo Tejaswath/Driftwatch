@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { DriftStatus, RunStatus, UiRun } from "@/lib/types";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/format";
@@ -14,24 +15,34 @@ type RunsClientTableProps = {
 };
 
 export default function RunsClientTable({ runs }: RunsClientTableProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filterDomain, setFilterDomain] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<RunStatus | "all">("all");
-  const [filterDrift, setFilterDrift] = useState<DriftStatus | "all">("all");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const filterDomain = searchParams.get("domain") ?? "all";
+  const filterStatus = (searchParams.get("status") ?? "all") as RunStatus | "all";
+  const filterDrift = (searchParams.get("drift") ?? "all") as DriftStatus | "all";
+  const currentPage = Math.max(1, Number(searchParams.get("page") ?? "1"));
+
+  function updateFilter(key: string, value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(key, value);
+    params.set("page", "1");
+    router.push(`?${params.toString()}`, { scroll: false });
+  }
+
+  function setPage(page: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("page", String(page));
+    router.push(`?${params.toString()}`, { scroll: false });
+  }
 
   const domains = useMemo(() => Array.from(new Set(runs.map((run) => run.domain))).sort(), [runs]);
 
   const filteredRuns = useMemo(() => {
     return runs.filter((run) => {
-      if (filterDomain !== "all" && run.domain !== filterDomain) {
-        return false;
-      }
-      if (filterStatus !== "all" && run.status !== filterStatus) {
-        return false;
-      }
-      if (filterDrift !== "all" && run.driftStatus !== filterDrift) {
-        return false;
-      }
+      if (filterDomain !== "all" && run.domain !== filterDomain) return false;
+      if (filterStatus !== "all" && run.status !== filterStatus) return false;
+      if (filterDrift !== "all" && run.driftStatus !== filterDrift) return false;
       return true;
     });
   }, [runs, filterDomain, filterStatus, filterDrift]);
@@ -49,17 +60,12 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
             <label className="mb-2 block text-sm text-[#6B7280]">Domain</label>
             <select
               value={filterDomain}
-              onChange={(event) => {
-                setFilterDomain(event.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => updateFilter("domain", e.target.value)}
               className="h-10 w-full rounded-lg border border-[#E5E5E5] px-3 text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-nordea-teal"
             >
               <option value="all">All Domains</option>
               {domains.map((domain) => (
-                <option key={domain} value={domain}>
-                  {domain}
-                </option>
+                <option key={domain} value={domain}>{domain}</option>
               ))}
             </select>
           </div>
@@ -68,10 +74,7 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
             <label className="mb-2 block text-sm text-[#6B7280]">Status</label>
             <select
               value={filterStatus}
-              onChange={(event) => {
-                setFilterStatus(event.target.value as RunStatus | "all");
-                setCurrentPage(1);
-              }}
+              onChange={(e) => updateFilter("status", e.target.value)}
               className="h-10 w-full rounded-lg border border-[#E5E5E5] px-3 text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-nordea-teal"
             >
               <option value="all">All Statuses</option>
@@ -86,10 +89,7 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
             <label className="mb-2 block text-sm text-[#6B7280]">Drift</label>
             <select
               value={filterDrift}
-              onChange={(event) => {
-                setFilterDrift(event.target.value as DriftStatus | "all");
-                setCurrentPage(1);
-              }}
+              onChange={(e) => updateFilter("drift", e.target.value)}
               className="h-10 w-full rounded-lg border border-[#E5E5E5] px-3 text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-nordea-teal"
             >
               <option value="all">All Levels</option>
@@ -112,7 +112,7 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Drift</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Baseline</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Batch ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Triggered</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-[#6B7280]">Created</th>
               </tr>
             </thead>
@@ -144,7 +144,15 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
                       <DriftIndicator severity={run.driftStatus} showLabel />
                     </td>
                     <td className="px-4 py-3 text-sm text-[#6B7280]">{run.baselineVersion}</td>
-                    <td className="px-4 py-3 text-sm text-[#6B7280]">{run.batchId || "—"}</td>
+                    <td className="px-4 py-3 text-sm text-[#6B7280]">
+                      {run.triggeredBy === "admin" ? (
+                        <span className="inline-flex rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-medium text-[#92400E]">
+                          admin
+                        </span>
+                      ) : (
+                        <span className="text-[#9CA3AF]">cron</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-[#6B7280]" title={formatAbsoluteTime(run.createdAt)}>
                       {formatRelativeTime(run.createdAt)}
                     </td>
@@ -158,14 +166,15 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
         {currentRuns.length ? (
           <div className="flex items-center justify-between border-t border-[#E5E5E5] px-4 py-3">
             <div className="text-sm text-[#6B7280]">
-              Showing {startIndex + 1}-{Math.min(startIndex + ROWS_PER_PAGE, filteredRuns.length)} of{" "}
+              Showing {startIndex + 1}–{Math.min(startIndex + ROWS_PER_PAGE, filteredRuns.length)} of{" "}
               {filteredRuns.length}
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                onClick={() => setPage(safePage - 1)}
                 disabled={safePage === 1}
+                aria-label="Previous page"
                 className="rounded-lg border border-[#E5E5E5] px-3 py-1 text-sm text-[#6B7280] hover:bg-[#F4F4F4] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ChevronLeft size={16} />
@@ -175,8 +184,9 @@ export default function RunsClientTable({ runs }: RunsClientTableProps) {
               </span>
               <button
                 type="button"
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                onClick={() => setPage(safePage + 1)}
                 disabled={safePage === totalPages}
+                aria-label="Next page"
                 className="rounded-lg border border-[#E5E5E5] px-3 py-1 text-sm text-[#6B7280] hover:bg-[#F4F4F4] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <ChevronRight size={16} />

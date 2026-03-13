@@ -18,6 +18,40 @@ export type MonitorRun = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  triggered_by: string | null;
+};
+
+export type PerformanceMetric = {
+  metric_name: string;
+  metric_value: number;
+  computed_at: string;
+};
+
+export type DataQualityMetric = {
+  feature_name: string;
+  missing_rate: number | null;
+  outlier_rate: number | null;
+  schema_change: boolean;
+  computed_at: string;
+};
+
+export type RetrainingEvent = {
+  id: string;
+  triggered_at: string;
+  policy_name: string;
+  consecutive_red_count: number | null;
+  prediction_drift_score: number | null;
+  status: string;
+  baseline_version: string | null;
+  notes: string | null;
+};
+
+export type SystemHealthStats = {
+  avgDurationSeconds: number;
+  avgBatchSize: number;
+  totalRowsProcessed: number;
+  p95DurationSeconds: number;
+  sampleCount: number;
 };
 
 export type DomainHeartbeat = {
@@ -75,4 +109,5 @@ export type UiRun = {
   sourceMode: UiSourceMode;
   driftRatio: number;
   topFeatures: DriftTopFeature[];
+  triggeredBy: string | null;
 };

@@ -6,6 +6,21 @@ from urllib.parse import quote
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
+from requests.exceptions import RequestException
+
+
+def _retry_request(func, *args, retries: int = 3, **kwargs) -> requests.Response:
+    """Execute a requests call with exponential backoff retry."""
+    for attempt in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except RequestException as exc:
+            if attempt == retries - 1:
+                raise
+            wait = 2 ** attempt
+            print(f"[driftwatch] request failed (attempt {attempt + 1}/{retries}), retrying in {wait}s: {exc}", flush=True)
+            time.sleep(wait)
+    raise RuntimeError("unreachable")
 
 
 @dataclass
@@ -46,24 +61,25 @@ class SupabaseClient:
         if limit is not None:
             params["limit"] = str(limit)
 
-        response = requests.get(
-            f"{self.rest_base}/{table}", headers=self.headers, params=params, timeout=30
+        response = _retry_request(
+            requests.get, f"{self.rest_base}/{table}", headers=self.headers, params=params, timeout=30
         )
         response.raise_for_status()
         return response.json()
 
     def insert(self, table: str, rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
         payload = list(rows)
-        response = requests.post(
-            f"{self.rest_base}/{table}", headers=self.headers, data=json.dumps(payload), timeout=30
+        response = _retry_request(
+            requests.post, f"{self.rest_base}/{table}", headers=self.headers, data=json.dumps(payload), timeout=30
         )
         response.raise_for_status()
         return response.json()
 
     def upsert(self, table: str, rows: Iterable[Dict[str, Any]], on_conflict: str) -> List[Dict[str, Any]]:
         payload = list(rows)
-        headers = {**self.headers, "Prefer": f"resolution=merge-duplicates,return=representation"}
-        response = requests.post(
+        headers = {**self.headers, "Prefer": "resolution=merge-duplicates,return=representation"}
+        response = _retry_request(
+            requests.post,
             f"{self.rest_base}/{table}?on_conflict={on_conflict}",
             headers=headers,
             data=json.dumps(payload),
@@ -73,11 +89,40 @@ class SupabaseClient:
         return response.json()
 
     def update(self, table: str, filters: Dict[str, str], data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        response = requests.patch(
-            f"{self.rest_base}/{table}", headers=self.headers, params=filters, data=json.dumps(data), timeout=30
+        response = _retry_request(
+            requests.patch, f"{self.rest_base}/{table}", headers=self.headers, params=filters, data=json.dumps(data), timeout=30
         )
         response.raise_for_status()
         return response.json()
+
+    def delete_storage_object(self, bucket: str, path: str) -> bool:
+        """Delete a single object from Supabase Storage. Returns True on success."""
+        url = f"{self.storage_base}/object/{bucket}/{path}"
+        headers = {
+            "apikey": self.service_key,
+            "Authorization": f"Bearer {self.service_key}",
+        }
+        try:
+            response = requests.delete(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return True
+        except RequestException as exc:
+            print(f"[driftwatch] storage delete failed for {path}: {exc}", flush=True)
+            return False
+
+    def get_storage_bucket_stats(self, bucket: str) -> Optional[Dict[str, Any]]:
+        """Fetch bucket metadata from Supabase Storage API."""
+        url = f"{self.storage_base}/bucket/{bucket}"
+        headers = {
+            "apikey": self.service_key,
+            "Authorization": f"Bearer {self.service_key}",
+        }
+        try:
+            response = requests.get(url, headers=headers, timeout=20)
+            response.raise_for_status()
+            return response.json()
+        except RequestException:
+            return None
 
     def upload_bytes(self, bucket: str, path: str, content: bytes, content_type: str) -> str:
         url = f"{self.storage_base}/object/{bucket}/{path}"
@@ -87,7 +132,7 @@ class SupabaseClient:
             "Content-Type": content_type,
             "x-upsert": "true",
         }
-        response = requests.post(url, headers=headers, data=content, timeout=60)
+        response = _retry_request(requests.post, url, headers=headers, data=content, timeout=60)
         response.raise_for_status()
         return f"{self.storage_base}/object/public/{bucket}/{path}"
 
@@ -101,7 +146,7 @@ class SupabaseClient:
             "apikey": self.service_key,
             "Authorization": f"Bearer {self.service_key}",
         }
-        response = requests.get(url, headers=headers, timeout=60)
+        response = _retry_request(requests.get, url, headers=headers, timeout=60)
         response.raise_for_status()
         return response.content
 
