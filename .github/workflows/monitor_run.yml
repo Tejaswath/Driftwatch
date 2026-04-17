@@ -23,8 +23,11 @@ on:
         type: string
         required: false
         default: "scheduled"
-  schedule:
-    - cron: "17 3 * * *"
+      triggered_by:
+        description: "Who triggered this run (admin or cron)"
+        type: string
+        required: false
+        default: "admin"
 
 concurrency:
   group: driftwatch-${{ github.event.inputs.domain || 'nordea' }}-${{ github.event.inputs.baseline_version || 'v1' }}

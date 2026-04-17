@@ -2,8 +2,6 @@ name: sweeper
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/30 * * * *"
 
 jobs:
   sweep:
