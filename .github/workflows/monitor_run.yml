@@ -28,8 +28,6 @@ on:
         type: string
         required: false
         default: "admin"
-  schedule:
-    - cron: "17 3 * * *"
 
 concurrency:
   group: driftwatch-${{ github.event.inputs.domain || 'nordea' }}-${{ github.event.inputs.baseline_version || 'v1' }}

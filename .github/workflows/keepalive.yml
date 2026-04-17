@@ -2,8 +2,6 @@ name: keepalive
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "7 */12 * * *"
 
 jobs:
   ping:
